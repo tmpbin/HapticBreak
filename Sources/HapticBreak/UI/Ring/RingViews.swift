@@ -11,8 +11,12 @@ struct RingGeometry: Equatable {
     var centerRadius: CGFloat { (size - lineWidth) / 2 }
     func point(_ frac: Double) -> CGPoint {
         let t = frac * 2 * .pi
-        return CGPoint(x: size / 2 + centerRadius * sin(t),
-                       y: size / 2 - centerRadius * cos(t))
+        // Pin sin/cos to the Double-returning overload explicitly: newer toolchains also surface a
+        // CoreGraphics sin/cos(CGFloat), and with CGFloat↔Double interop the bare call is ambiguous.
+        let sinT: Double = sin(t)
+        let cosT: Double = cos(t)
+        return CGPoint(x: size / 2 + centerRadius * CGFloat(sinT),
+                       y: size / 2 - centerRadius * CGFloat(cosT))
     }
 }
 
