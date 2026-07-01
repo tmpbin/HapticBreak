@@ -1,0 +1,197 @@
+name: Release
+
+# 推送 vX.Y.Z 标签即触发：构建 → 冒烟测试 → 打包 → 取 CHANGELOG 对应段作发布说明 → 建 GitHub Release。
+#
+# 默认走 ad-hoc 签名（无需任何配置即可出包）。
+# 若在仓库 Secrets 配置了下列变量，则自动升级为 Developer ID 签名 + 公证 + staple（下载即开、零提示）：
+#   MACOS_CERTIFICATE_BASE64    Developer ID Application 证书 .p12 的 base64
+#   MACOS_CERTIFICATE_PASSWORD  该 .p12 的密码
+#   MACOS_SIGN_IDENTITY         形如 "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID                    Apple 开发者账号邮箱
+#   APPLE_TEAM_ID               10 位 Team ID
+#   APPLE_APP_PASSWORD          App 专用密码（App-Specific Password）
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # 创建 Release、上传产物
+
+jobs:
+  release:
+    runs-on: macos-15   # 需要更新的工具链可改为 macos-26
+    env:
+      # 提升到 env 供各步骤的 if: 判断（Secret 是否已配置）。
+      MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      # 应用内升级：EdDSA 私钥（setup-keys.sh 导出的文件内容）。
+      # 配置后自动生成 appcast 并发布到 gh-pages；未配置则跳过（仍可正常出 Release）。
+      UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 解析版本与预发布标记
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # 含连字符（如 v1.2.0-beta.1）视为预发布。
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 从 CHANGELOG 抽取发布说明
+        id: notes
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          # 抽取 "## [VERSION]" 到下一个 "## [" 之间的内容。
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            flag && /^## \[/ { flag=0 }
+            flag { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+          # 去掉首尾空行；若为空则回退到通用说明。
+          if [ ! -s "$NOTES_FILE" ] || ! grep -q '[^[:space:]]' "$NOTES_FILE"; then
+            printf 'HapticBreak %s\n\n详见 CHANGELOG.md。\n' "$VERSION" > "$NOTES_FILE"
+          fi
+          echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          echo "----- 发布说明预览 -----"; cat "$NOTES_FILE"
+
+      - name: 导入 Developer ID 证书（配置了 Secret 才执行）
+        if: ${{ env.MACOS_CERTIFICATE_BASE64 != '' }}
+        env:
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+
+          echo -n "$MACOS_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          # 让后续步骤（build.sh / codesign）使用该身份。
+          echo "HB_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
+
+      - name: 单元测试（swift test）
+        run: swift test
+
+      - name: 构建并打包（.app + .dmg）
+        env:
+          HB_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          chmod +x build.sh
+          ./build.sh release dmg
+
+      - name: 冒烟测试（计时状态机逻辑自测）
+        run: .build/release/HapticBreak --logictest
+
+      - name: 公证并 staple（配置了证书 + Apple ID 才执行）
+        if: ${{ env.MACOS_CERTIFICATE_BASE64 != '' && env.APPLE_ID != '' }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          DMG="build/HapticBreak-$VERSION.dmg"
+          echo "==> 提交公证：$DMG"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          echo "==> staple DMG"
+          xcrun stapler staple "$DMG"
+          echo "==> staple 独立 .app（票据按 cdhash 拉取，供 zip 离线校验）"
+          xcrun stapler staple "build/HapticBreak.app" || echo "（app staple 跳过：在线校验仍可放行）"
+
+      - name: 归集分发产物（.dmg + .zip）
+        id: dist
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          mkdir -p dist
+          cp "build/HapticBreak-$VERSION.dmg" "dist/HapticBreak-$VERSION.dmg"
+          # zip 保留 .app 结构（含已 staple 的票据），便于直接下载解压。
+          ditto -c -k --keepParent "build/HapticBreak.app" "dist/HapticBreak-$VERSION.zip"
+          ls -lh dist
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            dist/*.dmg dist/*.zip \
+            --title "HapticBreak ${{ steps.meta.outputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.path }}" \
+            $([ "${{ steps.meta.outputs.prerelease }}" = "true" ] && echo "--prerelease")
+
+      - name: 生成并发布升级源 appcast 到 gh-pages（配置了私钥才执行）
+        if: ${{ env.UPDATE_PRIVATE_KEY != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="${{ steps.meta.outputs.tag }}"
+          REPO="${{ github.repository }}"
+          GA="$(ls .build/artifacts/*/Sparkle/bin/generate_appcast | head -1)"
+
+          # 归集本次的更新档供升级工具生成 enclosure。用 .zip（zipped .app，规范更新
+          # 格式，兼容性最佳）；它与 .dmg 一同已作为 Release 资产上传。
+          WORK="$RUNNER_TEMP/appcast"
+          rm -rf "$WORK"; mkdir -p "$WORK"
+          cp "dist/HapticBreak-$VERSION.zip" "$WORK/"
+
+          # 取回已发布的 appcast 做增量追加（首发时不存在则忽略）。
+          if git ls-remote --exit-code origin gh-pages >/dev/null 2>&1; then
+            git fetch --depth 1 origin gh-pages
+            git show FETCH_HEAD:appcast.xml > "$WORK/appcast.xml" 2>/dev/null || true
+          fi
+
+          # download-url-prefix 指向本次 Release 的资产下载目录；私钥经 stdin 传入，不落盘明文。
+          echo "$UPDATE_PRIVATE_KEY" | "$GA" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/$REPO/releases/download/$TAG/" \
+            --link "https://github.com/$REPO" \
+            -o "$WORK/appcast.xml" \
+            "$WORK"
+
+          echo "----- 生成的 appcast.xml -----"; cat "$WORK/appcast.xml"
+
+          # 发布到 gh-pages 分支（保留分支内其他文件；首次自动建 orphan 分支）。
+          PAGES="$RUNNER_TEMP/gh-pages"
+          rm -rf "$PAGES"; mkdir -p "$PAGES"; cd "$PAGES"
+          git init -q
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/$REPO.git"
+          if git fetch --depth 1 origin gh-pages 2>/dev/null; then
+            git checkout -q -B gh-pages FETCH_HEAD
+          else
+            git checkout -q --orphan gh-pages
+            git rm -rfq --cached . 2>/dev/null || true
+            find . -maxdepth 1 ! -name . ! -name .git -exec rm -rf {} + 2>/dev/null || true
+          fi
+          cp "$WORK/appcast.xml" ./appcast.xml
+          touch .nojekyll   # 避免 Pages 的 Jekyll 处理 XML
+          git add appcast.xml .nojekyll
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qm "appcast: HapticBreak $VERSION" || { echo "appcast 无变化，跳过发布。"; exit 0; }
+          git push -q origin gh-pages
+          echo "==> 已发布 appcast 到 gh-pages。"

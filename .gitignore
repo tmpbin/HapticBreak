@@ -1,0 +1,41 @@
+# ---- Swift Package Manager ----
+/.build/
+.swiftpm/
+# 注意：Package.resolved 有意入库——锁定依赖的确切版本，保证
+# CI 发布构建与本地测试完全一致（可复现的框架嵌入/签名）。
+
+# ---- 构建产物（由 build.sh / CI 生成，不入库）----
+/build/
+
+# ---- 内部设计 / 追踪 / 调研文档（仅本地，不随发行仓库入库）----
+/docs/
+
+# ---- Xcode（如后续用 Xcode 打开）----
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# ---- 签名 / 公证敏感物（绝不入库）----
+*.p12
+*.cer
+*.certSigningRequest
+*.provisionprofile
+*.mobileprovision
+# 升级签名 EdDSA 私钥（公钥 eddsa_public.key 可入库，私钥绝不入库）
+eddsa_private.key
+*_private_key*
+.env
+.env.*
+
+# ---- macOS ----
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# ---- 编辑器 ----
+.idea/
+.vscode/
+*.swp
