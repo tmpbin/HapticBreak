@@ -49,63 +49,6 @@ private struct MinuteArc: View {
     }
 }
 
-/// Shimmer: a wide, soft highlight band slowly orbits clockwise along a ring segment (same direction as
-/// the second hand), giving the ring a living sense of "energy flowing". Rendered twice from one orbit
-/// phase: a bright band on the lit (colored) arc, and a faint one on the remaining gray track — so the
-/// whole ring, not just the colored part, feels alive.
-private struct ShimmerOverlay: View {
-    var from: Double            // Trim start (fraction around the ring)
-    var to: Double              // Trim end
-    var angle: Double
-    var lineWidth: CGFloat
-    var peak: Double            // Max opacity of the highlight band's crest
-    var body: some View {
-        AngularGradient(
-            gradient: Gradient(stops: [
-                .init(color: .white.opacity(0.0),         location: 0.0),
-                .init(color: .white.opacity(peak * 0.26), location: 0.18),
-                .init(color: .white.opacity(peak * 0.63), location: 0.34),
-                .init(color: .white.opacity(peak),        location: 0.50),
-                .init(color: .white.opacity(peak * 0.63), location: 0.66),
-                .init(color: .white.opacity(peak * 0.26), location: 0.82),
-                .init(color: .white.opacity(0.0),         location: 1.0)
-            ]),
-            center: .center)
-            .rotationEffect(.degrees(angle))
-            .mask(
-                Circle()
-                    .trim(from: max(0, min(1, from)), to: max(0, min(1, to)))
-                    .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .padding(lineWidth / 2)
-            )
-            .blendMode(.plusLighter)
-            .allowsHitTesting(false)
-    }
-}
-
-/// Shimmer: a soft highlight band slowly orbiting the ring — a faint sheen on the remaining gray track and a
-/// brighter one on the lit arc, sharing one orbit phase. The repeating animation is owned by this view's own
-/// `@State`, so its lifecycle is tied to the view being on-screen: it only exists while the panel shows the
-/// ring (`animated`), and when the panel closes this view leaves the tree and SwiftUI cancels the
-/// `repeatForever` cleanly — no infinite animation left spinning in the background. Keeping the phase local
-/// also confines each frame's invalidation to this small view instead of re-rendering the whole ring.
-private struct ShimmerLayer: View {
-    var litFrac: Double
-    var lineWidth: CGFloat
-    @State private var angle: Double = 0
-    var body: some View {
-        ZStack {
-            ShimmerOverlay(from: litFrac, to: 1, angle: angle, lineWidth: lineWidth, peak: 0.08)
-            ShimmerOverlay(from: 0, to: litFrac, angle: angle, lineWidth: lineWidth, peak: 0.27)
-        }
-        .onAppear {
-            angle = 0
-            withAnimation(.linear(duration: 5.2).repeatForever(autoreverses: false)) { angle = 360 }
-        }
-    }
-}
-
 /// Shimmer bullet: a fixed shape (ring-hugging comet tail + a white-core head pinned at the top) rotated
 /// clockwise as a whole via rotationEffect(head·360°) for positioning (the transform naturally hugs the
 /// ring, animates smoothly, and is screenshot-able). Always in the tree; shown/hidden via opacity.
@@ -241,7 +184,9 @@ private struct CenterReadout: View {
 /// Layering (so changes no longer ripple everywhere):
 /// - **L1 `RingModel`** (pure logic): quantization + deduction decision → semantic events. Fully covered by `--logictest`.
 /// - **L2 `RingAnimator`** (presentation logic): events → bullet/burst/retract timeline, holds all animation state.
-/// - **L3 subviews** (pure render): `MinuteArc / ShimmerOverlay / EnergyBullet / ImpactBurst / SecondHand / CenterReadout`.
+/// - **L3 subviews** (pure render): `MinuteArc / EnergyBullet / ImpactBurst / CenterReadout` in SwiftUI, plus the
+///   **continuous** ornaments `ShimmerOrnament / SecondHandOrnament` on Core Animation layers (RingOrnaments.swift) —
+///   render-server interpolation keeps the open panel at the no-animation CPU baseline (docs/PANEL_CPU_INVESTIGATION.md §9).
 /// Data flows one way, downward; the deduction decision **no longer lives in the view's onChange self re-read**
 /// (which was the root cause of the first grid being swallowed).
 struct CountdownRing: View {
@@ -261,25 +206,19 @@ struct CountdownRing: View {
     @State private var model = RingModel(.init(remaining: 0, total: 1, animated: true))
     @StateObject private var anim = RingAnimator()
 
-    /// Second-hand angle (6°/sec, accumulating clockwise). Driven by explicit state: natural ticking sweeps
-    /// smoothly; when the remaining time **jumps** (skip/postpone/interval change/reset/resume), it snaps into
-    /// place without animation, resetting only once, instead of treating a huge angle delta as an animation
-    /// and "spinning wildly".
-    @State private var handAngle: Double = 0
-    @State private var prevRemaining: Int = 0
-
     private var input: RingModel.Input { .init(remaining: remaining, total: total, animated: animated) }
     private var geo: RingGeometry { RingGeometry(size: size, lineWidth: lineWidth) }
-    private func handTarget(_ seconds: Int) -> Double { -6.0 * Double(seconds) }
 
     var body: some View {
         ZStack {
             MinuteArc(lit: anim.displayedLit, grids: model.grids,
                       color: color, lineWidth: lineWidth, flash: anim.minuteFlash)
 
+            // Continuous ornaments live on Core Animation layers. The shimmer leaves the tree when the ring
+            // is not running, so nothing spins in the background.
             if animated {
-                let litFrac = Double(anim.displayedLit) / Double(max(1, model.grids))
-                ShimmerLayer(litFrac: litFrac, lineWidth: lineWidth)
+                ShimmerOrnament(lineWidth: lineWidth,
+                                litFrac: Double(anim.displayedLit) / Double(max(1, model.grids)))
             }
 
             ImpactBurst(frac: anim.burstFrac, notchFrom: anim.notchFrom, notchTo: anim.notchTo,
@@ -291,16 +230,14 @@ struct CountdownRing: View {
             EnergyBullet(head: anim.bulletHead, opacity: anim.bulletOpacity,
                          color: color, lineWidth: lineWidth, geo: geo)
 
-            // Second hand: on reset (returning to the top cutoff point) it fires a bullet clockwise ahead;
-            // the reset recoil is triggered by the logical truth model.lit.
-            SecondHand(color: color,
-                       tipRadius: geo.centerRadius,
-                       lineWidth: lineWidth,
-                       minuteTick: model.lit,
-                       secondTick: remaining,
-                       active: animated)
-                .rotationEffect(.degrees(handAngle))
-                .opacity(animated ? 1 : 0.25)
+            // Second hand: sweeps 6°/s clockwise; natural −1 s ticks animate one step, jumps
+            // (skip/postpone/interval change/reset/resume) snap without animation, and the per-minute
+            // recoil is triggered by the logical truth model.lit — all diffed inside the ornament.
+            SecondHandOrnament(color: color,
+                               lineWidth: lineWidth,
+                               remaining: remaining,
+                               minuteTick: model.lit,
+                               active: animated)
 
             CenterReadout(timeText: timeText, statusText: statusText,
                           statusSymbol: statusSymbol, color: color)
@@ -308,8 +245,6 @@ struct CountdownRing: View {
         .frame(width: size, height: size)
         .onAppear {
             model = RingModel(input)
-            prevRemaining = remaining
-            handAngle = handTarget(remaining)
             anim.onImpact = onImpact
             anim.setInitial(lit: model.lit)
         }
@@ -320,119 +255,11 @@ struct CountdownRing: View {
             let event = model.update(newInput)
             anim.apply(event, grids: model.grids)
         }
-        // Second hand: only "natural ticking (running and exactly −1 second)" sweeps one step linearly; all else
-        // is treated as a jump → snap without animation, resetting only once.
-        .onChange(of: remaining) { newRemaining in
-            let isTick = animated && (prevRemaining - newRemaining == 1)
-            prevRemaining = newRemaining
-            let target = handTarget(newRemaining)
-            if isTick {
-                withAnimation(.linear(duration: 1)) { handAngle = target }
-            } else {
-                var tx = Transaction(); tx.disablesAnimations = true
-                withTransaction(tx) { handAngle = target }
-            }
-        }
         .onChange(of: animated) { isOn in
-            // Shimmer starts/stops purely by ShimmerLayer entering/leaving the tree (see `if animated` above),
-            // so its repeatForever is guaranteed to stop when the panel collapses — nothing to toggle here.
+            // Shimmer starts/stops purely by ShimmerOrnament entering/leaving the tree (see `if animated`
+            // above), so its repeating animation is guaranteed to stop when the panel collapses.
             if !isOn { anim.snap(toLit: model.lit) }
         }
     }
 }
 
-/// Second hand: a thin needle sweeping from mid-radius onto the ring + a glowing tip pressed on the minute
-/// ring + a comet tail behind it (reinforcing the clockwise direction).
-/// - Each second: a light pulse at the tip (so "per-second" is perceptible).
-/// - Each minute crossed (reset back to the top cutoff point): the tip recoils + a shockwave ring expands
-///   outward = "the recoil of firing".
-private struct SecondHand: View {
-    var color: Color
-    var tipRadius: CGFloat      // = minute-ring stroke centerline radius, so the tip is strictly pressed on the ring
-    var lineWidth: CGFloat
-    var minuteTick: Int         // changes once per whole minute → tip burst
-    var secondTick: Int         // changes once per second → tip light pulse
-    var active: Bool
-
-    @State private var slam: CGFloat = 1          // deduction burst scale
-    @State private var pulseScale: CGFloat = 0.4  // shockwave
-    @State private var pulseOpacity: Double = 0
-    @State private var tick: CGFloat = 1          // per-second micro pulse
-
-    private var diameter: CGFloat { tipRadius * 2 }
-    private let tailFrac: CGFloat = 0.14
-    private var handLength: CGFloat { tipRadius * 0.7 }   // extends from the hub area (fading) onto the ring, like a clock's second hand
-
-    var body: some View {
-        ZStack {
-            // Comet tail: hugs the ring, fading out behind the tip (counterclockwise side), trailing behind during clockwise sweeping.
-            Circle()
-                .trim(from: 1 - tailFrac, to: 1)
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: color.opacity(0), location: 1 - Double(tailFrac)),
-                            .init(color: color.opacity(0.55), location: 1)
-                        ]),
-                        center: .center, startAngle: .degrees(0), endAngle: .degrees(360)),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: diameter, height: diameter)
-                .opacity(active ? 1 : 0)
-
-            // Needle body: status-colored thin needle, brightening from the hub area (faded) to the tip (bright) — a clearly visible "second hand".
-            Capsule()
-                .fill(LinearGradient(colors: [color.opacity(0), color.opacity(0.95)],
-                                     startPoint: .bottom, endPoint: .top))
-                .frame(width: 3, height: handLength)
-                .offset(y: -(tipRadius - handLength / 2))
-
-            // Tip: status-colored glow + white core, a high-contrast moving highlight pressed on the ring.
-            tip.offset(y: -tipRadius)
-        }
-        .frame(width: diameter, height: diameter)
-        .onChange(of: minuteTick) { _ in guard active else { return }; slamTip() }
-        .onChange(of: secondTick) { _ in guard active else { return }; tickPulse() }
-    }
-
-    private var tip: some View {
-        ZStack {
-            // Shockwave: expands outward and fades at the instant of deduction.
-            Circle()
-                .stroke(color, lineWidth: 2)
-                .frame(width: lineWidth * 2.8, height: lineWidth * 2.8)
-                .scaleEffect(pulseScale)
-                .opacity(pulseOpacity)
-            // Status-colored glow.
-            Circle()
-                .fill(color)
-                .frame(width: lineWidth * 2.0, height: lineWidth * 2.0)
-                .blur(radius: 2.5)
-                .opacity(0.9)
-                .scaleEffect(slam * tick)
-            // White core.
-            Circle()
-                .fill(.white)
-                .frame(width: lineWidth, height: lineWidth)
-                .scaleEffect(slam * tick)
-        }
-    }
-
-    /// Burst on reaching the cutoff point: the tip bounces + a shockwave ring expands.
-    private func slamTip() {
-        slam = 2.2
-        pulseScale = 0.4
-        pulseOpacity = 0.9
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.45)) { slam = 1 }
-        withAnimation(.easeOut(duration: 0.85)) {
-            pulseScale = 3.2
-            pulseOpacity = 0
-        }
-    }
-
-    /// A light pulse once per second, so "per-second" stays clearly perceptible under a minute-level countdown.
-    private func tickPulse() {
-        tick = 1.35
-        withAnimation(.easeOut(duration: 0.5)) { tick = 1 }
-    }
-}

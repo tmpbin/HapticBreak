@@ -159,8 +159,15 @@ final class AppController: NSObject, BreakTimerDelegate {
         // Environment suppressors (fullscreen / mic / focus) change slowly and their probes are relatively
         // expensive — window-server enumeration, a file read + JSON parse, and CoreAudio. Evaluate them on a
         // cadence and cache the result rather than every second; the countdown itself still ticks at 1 Hz.
-        if detectCounter == 0 { suppressCache = evaluateSuppression() }
-        detectCounter = (detectCounter + 1) % Self.detectCadence
+        // While manually paused they can't influence the state (manual outranks them), so skip probing
+        // entirely and re-probe on the first tick after resuming.
+        if timer.pauseReason == .manual {
+            suppressCache = nil
+            detectCounter = 0
+        } else {
+            if detectCounter == 0 { suppressCache = evaluateSuppression() }
+            detectCounter = (detectCounter + 1) % Self.detectCadence
+        }
 
         let active = timer.tick(idleSeconds: idle, externalSuppress: suppressCache)
         if active && !timer.isDeferring { stats.addActiveSecond() }
@@ -218,12 +225,15 @@ final class AppController: NSObject, BreakTimerDelegate {
         syncViewModel()
     }
 
+    /// Mirror timer state into the view model, assigning only what actually changed: every `@Published`
+    /// write fires `objectWillChange` regardless of equality, and this runs once per second — unconditional
+    /// writes would invalidate every observer (collapsed popover, any open window) five times per tick.
     private func syncViewModel() {
-        viewModel.remaining = timer.remaining
-        viewModel.total = timer.total
-        viewModel.phase = timer.phase
-        viewModel.pauseReason = timer.pauseReason
-        viewModel.isDeferring = timer.isDeferring
+        if viewModel.remaining   != timer.remaining   { viewModel.remaining   = timer.remaining }
+        if viewModel.total       != timer.total       { viewModel.total       = timer.total }
+        if viewModel.phase       != timer.phase       { viewModel.phase       = timer.phase }
+        if viewModel.pauseReason != timer.pauseReason { viewModel.pauseReason = timer.pauseReason }
+        if viewModel.isDeferring != timer.isDeferring { viewModel.isDeferring = timer.isDeferring }
         menuBar.refresh()
     }
 

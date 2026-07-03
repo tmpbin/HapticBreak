@@ -68,6 +68,19 @@ final class MenuBarController: NSObject {
         }
     }
 
+    /// Last states actually pushed to the status button. `refresh()` runs every tick (1 Hz), but
+    /// reassigning an unchanged title/image/tint still dirties the button and redraws the menu bar
+    /// (plus its replicant snapshot) — measurable idle CPU when paused or in a title-less style.
+    /// Diffing here means the button only redraws when something visible changed.
+    private var lastTitle: String?
+    private var lastImage: NSImage?
+    private var lastTint: NSColor?
+    /// Progress-ring quantization step last drawn (the 16 pt glyph can't resolve finer than ~1/64 turn,
+    /// so redrawing it every second is pure waste — once per step suffices).
+    private var ringStep = -1
+    private var ringImage: NSImage?
+    private static let ringSteps = 64
+
     /// Refresh the menu-bar icon (style), countdown, and tinting.
     func refresh() {
         guard let button = statusItem?.button else { return }
@@ -75,27 +88,38 @@ final class MenuBarController: NSObject {
         // Icon-only / progress-ring are "title-less": use a zero-width character as a placeholder to trigger
         // the menu bar's light/dark adaptive tinting (NSStatusBarButton's template image only inverts with
         // the menu-bar background when accompanied by a title).
+        let title: String
+        let image: NSImage?
         switch viewModel.settings.menuBarStyle {
         case .iconCountdown:
-            button.image = iconImage
-            button.title = " " + viewModel.timeString
+            title = " " + viewModel.timeString
+            image = iconImage
         case .iconOnly:
-            button.image = iconImage
-            button.title = "\u{200B}"
+            title = "\u{200B}"
+            image = iconImage
         case .progressRing:
-            button.image = progressRingImage(progress: viewModel.progress)
-            button.title = "\u{200B}"
+            title = "\u{200B}"
+            let step = Int((max(0, min(1, viewModel.progress)) * Double(Self.ringSteps)).rounded())
+            if step != ringStep || ringImage == nil {
+                ringStep = step
+                ringImage = progressRingImage(progress: Double(step) / Double(Self.ringSteps))
+            }
+            image = ringImage
         }
+        if title != lastTitle { lastTitle = title; button.title = title }
+        if image !== lastImage { lastImage = image; button.image = image }
 
         // Reminder-state emphasis: gray when paused, orange when near. Stays nil normally, so the system
         // adapts tinting to the wallpaper contrast.
+        let tint: NSColor?
         if viewModel.isPaused {
-            button.contentTintColor = .secondaryLabelColor
+            tint = .secondaryLabelColor
         } else if viewModel.settings.auxMenubarHighlight && viewModel.remaining <= 60 && viewModel.phase == .working {
-            button.contentTintColor = .systemOrange
+            tint = .systemOrange
         } else {
-            button.contentTintColor = nil
+            tint = nil
         }
+        if tint != lastTint { lastTint = tint; button.contentTintColor = tint }
     }
 
     /// Draw the menu-bar "progress ring" template image: a thin track ring + a solid arc that grows with progress.
@@ -132,6 +156,7 @@ final class MenuBarController: NSObject {
     func pulse() {
         guard let button = statusItem?.button else { return }
         button.contentTintColor = .systemRed
+        lastTint = .systemRed   // keep the diff cache honest so the follow-up refresh() restores the tint
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.refresh()
         }
