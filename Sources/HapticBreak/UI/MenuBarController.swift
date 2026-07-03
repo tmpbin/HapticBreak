@@ -37,7 +37,7 @@ final class MenuBarController: NSObject {
         // preferredContentSize asynchronously after expansion, competing with our contentSize and possibly
         // growing taller again post-expansion — pushing the top ring behind the menu bar. That's one of
         // the root causes of the "occlusion".
-        let hosting = NSHostingController(rootView: PopoverView(viewModel: viewModel))
+        let hosting = NSHostingController(rootView: PopoverView(viewModel: viewModel, collapsed: true))
         hostingController = hosting
         popover.behavior = .transient
         popover.animates = true
@@ -147,9 +147,23 @@ final class MenuBarController: NSObject {
         }
     }
 
+    /// Expand the panel content to its full form before showing, so `preparePopoverSize()` measures the real
+    /// height and the ring animates while visible.
+    private func expandPanelContent() {
+        hostingController.rootView = PopoverView(viewModel: viewModel, collapsed: false)
+    }
+
+    /// Collapse the panel content to an inert placeholder once dismissed. The popover keeps the hosting view
+    /// alive, so without this the observed view model's per-second ticks would re-lay-out the whole ring in
+    /// the background (idle CPU creeping up after the panel is opened once).
+    private func collapsePanelContent() {
+        hostingController.rootView = PopoverView(viewModel: viewModel, collapsed: true)
+    }
+
     /// Actively open the control panel (used for the first-launch onboarding).
     func showPopover() {
         guard let button = statusItem?.button, !popover.isShown else { return }
+        expandPanelContent()
         preparePopoverSize()
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -160,6 +174,7 @@ final class MenuBarController: NSObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            expandPanelContent()
             preparePopoverSize()
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
@@ -226,5 +241,6 @@ extension MenuBarController: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         viewModel.controller?.panelClosed()
         viewModel.panelVisible = false
+        collapsePanelContent()
     }
 }

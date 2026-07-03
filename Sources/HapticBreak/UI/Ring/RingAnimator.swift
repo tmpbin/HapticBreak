@@ -27,9 +27,6 @@ final class RingAnimator: ObservableObject {
     @Published var notchScale: CGFloat = 1
     @Published var notchOpacity: Double = 0
 
-    // Shimmer phase
-    @Published var shimmerAngle: Double = 0
-
     /// Flight duration of the shimmer bullet along the ring.
     private let flightDur: Double = 0.55
 
@@ -58,23 +55,6 @@ final class RingAnimator: ObservableObject {
     func snap(toLit lit: Int) {
         bulletOpacity = 0
         displayedLit = lit
-    }
-
-    /// Start/restart the shimmer: the highlight phase orbits clockwise at constant speed, looping forever
-    /// (running state only). Slow and gentle, in the same direction as the second hand.
-    /// When `animated=false` (paused / panel collapsed), **explicitly stop** repeatForever — otherwise, even
-    /// after the shimmer layer is removed from the view tree, this infinite animation keeps spinning in the
-    /// animation engine, needlessly consuming background resources.
-    func startShimmer(animated: Bool) {
-        guard animated else { stopShimmer(); return }
-        shimmerAngle = 0
-        withAnimation(.linear(duration: 5.2).repeatForever(autoreverses: false)) { shimmerAngle = 360 }
-    }
-
-    /// Cancel the in-progress infinite shimmer animation (reset the phase in a no-animation transaction, breaking repeatForever).
-    func stopShimmer() {
-        var tx = Transaction(); tx.disablesAnimations = true
-        withTransaction(tx) { shimmerAngle = 0 }
     }
 
     // MARK: - Deduction animation (fire → fly along the ring → hit and deduct at the end)

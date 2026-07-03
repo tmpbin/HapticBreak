@@ -6,7 +6,21 @@ struct PopoverView: View {
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared
 
+    /// The popover keeps this hosting view alive even while dismissed. When `collapsed` (panel closed) the
+    /// body renders only an inert placeholder, so the observed view model's per-second ticks don't re-lay-out
+    /// the whole ring/controls subtree in the background. The menu-bar controller flips this on show/close.
+    var collapsed: Bool = false
+
     var body: some View {
+        if collapsed {
+            // Keep the panel width so reopening doesn't flash a resize; height is minimal since it's unseen.
+            Color.clear.frame(width: Theme.panelWidth, height: 1)
+        } else {
+            expandedContent
+        }
+    }
+
+    private var expandedContent: some View {
         VStack(spacing: 14) {
             CountdownRing(remaining: viewModel.remaining,
                           total: viewModel.total,

@@ -84,6 +84,28 @@ private struct ShimmerOverlay: View {
     }
 }
 
+/// Shimmer: a soft highlight band slowly orbiting the ring — a faint sheen on the remaining gray track and a
+/// brighter one on the lit arc, sharing one orbit phase. The repeating animation is owned by this view's own
+/// `@State`, so its lifecycle is tied to the view being on-screen: it only exists while the panel shows the
+/// ring (`animated`), and when the panel closes this view leaves the tree and SwiftUI cancels the
+/// `repeatForever` cleanly — no infinite animation left spinning in the background. Keeping the phase local
+/// also confines each frame's invalidation to this small view instead of re-rendering the whole ring.
+private struct ShimmerLayer: View {
+    var litFrac: Double
+    var lineWidth: CGFloat
+    @State private var angle: Double = 0
+    var body: some View {
+        ZStack {
+            ShimmerOverlay(from: litFrac, to: 1, angle: angle, lineWidth: lineWidth, peak: 0.08)
+            ShimmerOverlay(from: 0, to: litFrac, angle: angle, lineWidth: lineWidth, peak: 0.27)
+        }
+        .onAppear {
+            angle = 0
+            withAnimation(.linear(duration: 5.2).repeatForever(autoreverses: false)) { angle = 360 }
+        }
+    }
+}
+
 /// Shimmer bullet: a fixed shape (ring-hugging comet tail + a white-core head pinned at the top) rotated
 /// clockwise as a whole via rotationEffect(head·360°) for positioning (the transform naturally hugs the
 /// ring, animates smoothly, and is screenshot-able). Always in the tree; shown/hidden via opacity.
@@ -257,10 +279,7 @@ struct CountdownRing: View {
 
             if animated {
                 let litFrac = Double(anim.displayedLit) / Double(max(1, model.grids))
-                // Faint sheen sweeping the remaining gray track.
-                ShimmerOverlay(from: litFrac, to: 1, angle: anim.shimmerAngle, lineWidth: lineWidth, peak: 0.08)
-                // Brighter shimmer sweeping the lit (colored) arc.
-                ShimmerOverlay(from: 0, to: litFrac, angle: anim.shimmerAngle, lineWidth: lineWidth, peak: 0.27)
+                ShimmerLayer(litFrac: litFrac, lineWidth: lineWidth)
             }
 
             ImpactBurst(frac: anim.burstFrac, notchFrom: anim.notchFrom, notchTo: anim.notchTo,
@@ -293,7 +312,6 @@ struct CountdownRing: View {
             handAngle = handTarget(remaining)
             anim.onImpact = onImpact
             anim.setInitial(lit: model.lit)
-            anim.startShimmer(animated: animated)
         }
         // ⚠️ Drive L1 only with the closure-delivered **new value** newInput; never re-read self here (the old
         //    onChange would capture a self lagging by one tick, which once caused target to be a minute too
@@ -316,7 +334,8 @@ struct CountdownRing: View {
             }
         }
         .onChange(of: animated) { isOn in
-            anim.startShimmer(animated: isOn)   // on → start shimmer; off → stop shimmer (break repeatForever, no idle spinning in background)
+            // Shimmer starts/stops purely by ShimmerLayer entering/leaving the tree (see `if animated` above),
+            // so its repeatForever is guaranteed to stop when the panel collapses — nothing to toggle here.
             if !isOn { anim.snap(toLit: model.lit) }
         }
     }
