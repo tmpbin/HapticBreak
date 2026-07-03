@@ -12,7 +12,9 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
     // When a language is specified, switch preview-only (not persisted) for a tri-lingual visual review.
     if let language { L10n.shared.previewOnlySet(language) }
 
-    // Set representative "fresh install" defaults so snapshots faithfully reflect the real first-run experience (doesn't affect the .app domain).
+    // Set representative "fresh install" defaults so snapshots faithfully reflect the real first-run
+    // experience. Safe against the user's real preferences: `--rendershots` is an ephemeral run
+    // (RuntimeMode), so Settings.shared is backed by an in-memory store.
     let s = Settings.shared
     s.breakIntervalMinutes = 25
     s.selectedPatternID = HapticPattern.urgent.id

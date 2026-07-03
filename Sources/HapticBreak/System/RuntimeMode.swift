@@ -16,8 +16,12 @@ enum RuntimeMode {
 
     /// Whether this is an "ephemeral run" — shared singletons should use temporary, in-process-isolated,
     /// discard-on-exit storage.
+    /// `--rendershots` is included because it overwrites `Settings.shared` with representative
+    /// "fresh install" values before rendering — run against the packaged .app, that would clobber
+    /// the user's real preferences without this isolation.
     static let isEphemeral: Bool = {
         CommandLine.arguments.contains("--demo")
+            || CommandLine.arguments.contains("--rendershots")
     }()
 
     /// Preference storage choice for `Settings.shared`: normally `.standard`, ephemeral runs use a pure

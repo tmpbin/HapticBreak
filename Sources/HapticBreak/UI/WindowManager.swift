@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    /// Posted every time the statistics window is presented. Windows are reused (closing only hides
+    /// them), so SwiftUI `onAppear` fires just once per app run — snapshot-based views listen for this
+    /// to reload instead of showing data frozen at first open.
+    static let hbStatsWindowShown = Notification.Name("com.aremind.hapticbreak.statsWindowShown")
+}
+
 /// Manages the SwiftUI windows for settings / statistics / pattern editor / haptic lab (reused, brought to front).
 final class WindowManager {
 
@@ -46,6 +53,7 @@ final class WindowManager {
                               size: NSSize(width: 520, height: 560)) {
             StatisticsView()
         }
+        NotificationCenter.default.post(name: .hbStatsWindowShown, object: nil)
     }
 
     func showPatternEditor() {

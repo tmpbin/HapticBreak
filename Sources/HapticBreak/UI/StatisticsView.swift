@@ -89,6 +89,9 @@ struct StatisticsView: View {
         }
         .frame(minWidth: 480, maxWidth: .infinity, minHeight: 460, maxHeight: .infinity)
         .onAppear(perform: reload)
+        // The window is reused (closing hides it), so onAppear fires only on the very first open;
+        // reload whenever the window is re-presented so the snapshot never shows stale days.
+        .onReceive(NotificationCenter.default.publisher(for: .hbStatsWindowShown)) { _ in reload() }
         .alert(L.t("stats.resetConfirmTitle"), isPresented: $showResetConfirm) {
             Button(L.t("btn.cancel"), role: .cancel) {}
             Button(L.t("stats.reset"), role: .destructive) {
