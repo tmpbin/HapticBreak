@@ -11,6 +11,7 @@
 <a href="README.md">English</a> · <b>简体中文</b> · <a href="https://tmpbin.github.io/HapticBreak/">官网</a>
 
 ![release](https://img.shields.io/github/v/release/tmpbin/HapticBreak?color=ff9500)
+![status](https://img.shields.io/badge/status-beta-orange)
 ![platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple)
 ![swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)
 ![haptics](https://img.shields.io/badge/Taptic%20Engine-powered-ff2d55)
@@ -142,6 +143,7 @@ swift run HapticBreak --hapticlab  # 直接打开真机标定台
 
 ## 已知限制
 
+- **HapticBreak 目前处于 Beta 公测阶段。** 核心提醒循环稳定且经过测试，但细节仍在打磨——欢迎提 Issue 反馈。
 - 未公证的独立分发版首次运行需手动放行（见上）；配置签名 Secret 后可彻底消除。
 - 专注 / 勿扰检测为「最佳努力」（读取系统文件），系统改版可能失效，但不影响核心提醒。
 - 精确震动走的是私有 API，理论上可能随 macOS 版本变化；已内置公开 API 自动回退。

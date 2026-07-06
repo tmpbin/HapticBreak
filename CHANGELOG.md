@@ -11,6 +11,24 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-06
+
+产品定性为 **Beta 公测版**（关于窗口、README 与官网同步标注）。
+
+### Added
+- **编辑器「敲一段节奏」升级为三只鼓**：轻点 / 清脆 / 低频嗡各一只，鼠标点击或键盘
+  **J / K / L** 像打鼓一样敲出节奏，每次敲击实时试触对应音色；名称输入框聚焦时按键不误触。
+- **英文界面截图**：README（英文版）与官网英文态引用英文界面截图，中英各自成套。
+- **官网**：粒子地板常驻温柔水波（每 1.5s 自动泛起涟漪）+ 点击空白处「投石入水」；
+  节奏面板改为透明（涟漪透过可见）；口号流光渐变；截图套 macOS 窗口边框并对齐；
+  语言在 HTML 解析期即应用——英文环境不再先闪中文。
+- **统计截图**：界面走查注入一周模拟数据，统计页以真实使用状态呈现（图表 / 连续天数 / 合计）。
+
+### Changed
+- **编辑器窗口尺寸修正**（700×620）：原 560pt 宽会裁掉单拍检查器右侧按钮。
+- **Homebrew 安装说明更新**：新版 brew 已禁用 `--no-quarantine` 开关，改为安装后
+  `xattr -dr com.apple.quarantine` 放行一次（README / 官网 / Cask / tap 同步）。
+
 ## [1.0.1] - 2026-07-06
 
 首个公开发布版本（在 1.0.0 内部版基础上的大规模打磨）。
@@ -84,6 +102,7 @@
 - 独立分发（非 App Store）：`build.sh` 支持版本注入与可选 Developer ID 签名 / 公证；
   GitHub Actions 推送 tag 自动构建、按本更新日志生成 Release（`.dmg` + `.zip`）。
 
-[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/tmpbin/HapticBreak/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/tmpbin/HapticBreak/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tmpbin/HapticBreak/commits/main

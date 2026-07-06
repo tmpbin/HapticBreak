@@ -29,7 +29,15 @@ struct AboutView: View {
                         .resizable()
                         .frame(width: 72, height: 72)
                 }
-                Text("HapticBreak").font(.title3.bold())
+                HStack(spacing: 8) {
+                    Text("HapticBreak").font(.title3.bold())
+                    Text("Beta")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.18))
+                        .foregroundStyle(.orange)
+                        .clipShape(Capsule())
+                }
                 Text("v" + SettingsView.appVersion)
                     .font(.caption).foregroundStyle(.secondary)
                 Text(L.t("settings.about"))

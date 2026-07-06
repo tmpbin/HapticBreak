@@ -309,9 +309,9 @@ extension L10n {
         "settings.resetConfirmMsg": ["将把全部偏好恢复为出厂默认（不影响自定义模式与统计），且无法撤销。",
                                     "This restores all preferences to factory defaults (custom patterns and stats are kept) and can't be undone.",
                                     "すべての設定を初期値に戻します（カスタムパターンと統計は保持）。元に戻せません。"],
-        "settings.about":          ["用触摸板震动提醒你起身休息的 macOS 应用——无声、无弹窗、不打断心流。",
-                                    "A macOS app that taps your break reminder into your palm through trackpad haptics — silent, no pop-ups, never breaking your flow.",
-                                    "トラックパッドの振動で休憩を知らせる macOS アプリ——無音・ポップアップなし・フローを妨げません。"],
+        "settings.about":          ["用触摸板震动提醒你起身休息的 macOS 应用——无声、无弹窗、不打断心流。目前为 Beta 公测版，欢迎反馈。",
+                                    "A macOS app that taps your break reminder into your palm through trackpad haptics — silent, no pop-ups, never breaking your flow. Currently in beta; feedback welcome.",
+                                    "トラックパッドの振動で休憩を知らせる macOS アプリ——無音・ポップアップなし・フローを妨げません。現在ベータ版です。フィードバック歓迎。"],
 
         // Statistics
         "stats.title":             ["统计", "Statistics", "統計"],

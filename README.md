@@ -11,6 +11,7 @@ When it's time, HapticBreak taps you on the palm through your trackpad. No pop�
 <b>English</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="https://tmpbin.github.io/HapticBreak/">Website</a>
 
 ![release](https://img.shields.io/github/v/release/tmpbin/HapticBreak?color=ff9500)
+![status](https://img.shields.io/badge/status-beta-orange)
 ![platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple)
 ![swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)
 ![haptics](https://img.shields.io/badge/Taptic%20Engine-powered-ff2d55)
@@ -56,9 +57,9 @@ A buzz is just a buzz. **A rhythm is a feeling.** HapticBreak treats your trackp
 
 |  Control panel — the per‑second energy ring | Resting — a slow breathing glow |
 |:--:|:--:|
-| ![popover](assets/screenshots/popover-light.png) | ![resting](assets/screenshots/popover-resting-light.png) |
+| ![popover](assets/screenshots/en/popover-light.png) | ![resting](assets/screenshots/en/popover-resting-light.png) |
 | **Statistics — honest breaks + daily streak** | **Pattern editor — design your own groove** |
-| ![stats](assets/screenshots/statistics-light.png) | ![editor](assets/screenshots/editor-light.png) |
+| ![stats](assets/screenshots/en/statistics-light.png) | ![editor](assets/screenshots/en/editor-light.png) |
 
 ---
 
@@ -142,6 +143,7 @@ Pushing a `vX.Y.Z` tag triggers the [release pipeline](.github/workflows/release
 
 ## Notes & limits
 
+- **HapticBreak is currently in beta.** The core reminder loop is stable and tested, but expect rough edges — issues and feedback are very welcome.
 - Unnotarized standalone builds need a one‑time manual allow (above); configuring signing secrets removes that entirely.
 - Focus / Do Not Disturb detection is best‑effort (it reads a system file); an OS revision may change it, but it never affects the core reminder.
 - The precise‑haptics path uses a private API and could shift across macOS versions; a public‑API fallback is built in.
