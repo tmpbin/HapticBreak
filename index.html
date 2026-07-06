@@ -37,6 +37,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:10;backdrop-filter:blur(18px);-w
 nav .wrap{display:flex;align-items:center;gap:14px;height:58px}
 nav img{width:26px;height:26px;border-radius:7px}
 nav .brand{font-weight:700;letter-spacing:.02em}
+.beta{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--amber);
+  border:1px solid rgba(255,149,0,.5);border-radius:99px;padding:2.5px 9px;background:rgba(255,149,0,.10)}
 nav .sp{flex:1}
 nav a,nav button{color:var(--dim);text-decoration:none;font-size:13.5px;background:none;border:none;cursor:pointer;font-family:inherit;transition:color .2s}
 nav a:hover,nav button:hover{color:var(--fg)}
@@ -152,6 +154,7 @@ footer .sp{flex:1}
   <div class="wrap">
     <img src="assets/icon.png" alt="">
     <span class="brand">HapticBreak</span>
+    <span class="beta">BETA</span>
     <span class="sp"></span>
     <a class="navlink" href="#feel" data-i18n="nav.feel">感受节奏</a>
     <a class="navlink" href="#shots" data-i18n="nav.shots">截图</a>
@@ -219,10 +222,10 @@ footer .sp{flex:1}
       <h2 class="reveal" data-i18n="shots.title">一枚菜单栏图标，一个会呼吸的圆环</h2>
       <p class="lead reveal" data-i18n="shots.lead">能量按秒释放的倒计时环、诚实的休息统计、随手能编的节奏画布。会议、全屏、勿扰、离开——都自动暂停，并把原因说给你听。</p>
       <div class="shots">
-        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/popover-dark.png" alt="control panel" loading="lazy"></div><figcaption data-i18n="shots.f1">控制面板 · 能量按秒释放</figcaption></figure>
-        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/popover-resting-dark.png" alt="resting" loading="lazy"></div><figcaption data-i18n="shots.f2">休息中 · 缓缓的呼吸光晕</figcaption></figure>
-        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/statistics-dark.png" alt="statistics" loading="lazy"></div><figcaption data-i18n="shots.f3">统计 · 诚实休息 + 连续天数</figcaption></figure>
-        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/editor-dark.png" alt="pattern editor" loading="lazy"></div><figcaption data-i18n="shots.f4">编辑器 · 敲一段自己的节奏</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img data-shot="popover-dark.png" src="assets/popover-dark.png" alt="control panel" loading="lazy"></div><figcaption data-i18n="shots.f1">控制面板 · 能量按秒释放</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img data-shot="popover-resting-dark.png" src="assets/popover-resting-dark.png" alt="resting" loading="lazy"></div><figcaption data-i18n="shots.f2">休息中 · 缓缓的呼吸光晕</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img data-shot="statistics-dark.png" src="assets/statistics-dark.png" alt="statistics" loading="lazy"></div><figcaption data-i18n="shots.f3">统计 · 诚实休息 + 连续天数</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img data-shot="editor-dark.png" src="assets/editor-dark.png" alt="pattern editor" loading="lazy"></div><figcaption data-i18n="shots.f4">编辑器 · 敲一段自己的节奏</figcaption></figure>
       </div>
     </div>
   </section>
@@ -272,7 +275,7 @@ footer .sp{flex:1}
 
 <footer>
   <div class="wrap">
-    <span>HapticBreak · MIT-style, free &amp; open source</span>
+    <span>HapticBreak Beta · free &amp; open source</span>
     <span class="sp"></span>
     <a href="https://github.com/tmpbin/HapticBreak">GitHub</a>
     <a href="https://github.com/tmpbin/HapticBreak/releases" data-i18n="footer.releases">全部版本</a>
@@ -290,7 +293,7 @@ const DICT = {
     'hero.title':'能被你<em>摸到</em>的<br>休息提醒',
     'hero.sub':'不弹窗、不出声、不遮屏。到点时，HapticBreak 用触摸板在你手心轻轻拍一下——你收到了，世界没被打扰，心流一次都不断。',
     'hero.dl':'下载 .dmg','hero.brew':'或用 Homebrew 安装',
-    'hero.meta':'免费 · 开源 · macOS 13+ · 需要 Force Touch 触摸板 / Magic Trackpad 2+',
+    'hero.meta':'免费 · 开源 · Beta 公测 · macOS 13+ · 需要 Force Touch 触摸板 / Magic Trackpad 2+',
     'hero.scroll':'滚动 · 触摸板正在下方震动',
     'why.kicker':'为什么是震动','why.title':'别的提醒都在跟你的注意力抢工作',
     'why.lead':'自 2015 年起，每块 MacBook 触摸板下都压着一颗 Taptic Engine——一个能被软件精确控制的震动马达，就在你此刻搭着的手腕正下方。HapticBreak 用的就是这条一直都在、却没人用的通道。',
@@ -321,7 +324,7 @@ const DICT = {
     'hero.title':'A break reminder<br>you <em>feel</em>',
     'hero.sub':'No pop-up. No sound. Nothing on screen. When it\u2019s time, HapticBreak taps you on the palm through your trackpad — you get the message, the world stays undisturbed, and your flow never breaks.',
     'hero.dl':'Download .dmg','hero.brew':'or install via Homebrew',
-    'hero.meta':'Free · Open source · macOS 13+ · needs a Force Touch trackpad / Magic Trackpad 2+',
+    'hero.meta':'Free · Open source · Beta · macOS 13+ · needs a Force Touch trackpad / Magic Trackpad 2+',
     'hero.scroll':'Scroll · the trackpad below is buzzing',
     'why.kicker':'Why haptics','why.title':'Every other reminder fights your attention',
     'why.lead':'Since 2015, every MacBook trackpad hides a Taptic Engine — a precise little vibration motor sitting right under the wrist you\u2019re resting there. HapticBreak uses that channel: always there, never used.',
@@ -354,6 +357,10 @@ function applyLang(){
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.dataset.i18n; if (d[k]) el.textContent = d[k]; });
   document.querySelectorAll('[data-i18n-html]').forEach(el => { const k = el.dataset.i18nHtml; if (d[k]) el.innerHTML = d[k]; });
+  // Screenshots are rendered per language — swap between assets/ (zh) and assets/en/ (en).
+  document.querySelectorAll('img[data-shot]').forEach(img => {
+    img.src = (lang === 'zh' ? 'assets/' : 'assets/en/') + img.dataset.shot;
+  });
   document.getElementById('langBtn').textContent = lang === 'zh' ? 'EN' : '中';
   document.title = lang === 'zh' ? 'HapticBreak — 能被你摸到的休息提醒' : 'HapticBreak — A break reminder you feel';
 }
