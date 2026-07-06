@@ -45,6 +45,10 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
     for (hour, seconds) in hourLoad { rhythm.activeByHour[hour] = seconds }
     rhythm.breakMinutes = [10 * 60 + 25, 11 * 60 + 45, 14 * 60 + 30]
 
+    // Seed a realistic week into the (ephemeral, in-memory-backed) statistics store so the
+    // statistics snapshot reviews a lived-in state instead of an empty first day.
+    seedStatistics(todayHourLoad: hourLoad, todayBreakMinutes: rhythm.breakMinutes)
+
     let vm = AppViewModel()
     vm.remaining = 912
     vm.total = 1500
@@ -126,4 +130,44 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
         shoot("hapticlab", HapticLabView(), light: light)
     }
     return 0
+}
+
+/// Fill the last 7 days with a plausible working week (weekend dip, a 5-day streak), so the
+/// statistics snapshot shows the chart, streak and totals as a real user would see them.
+@MainActor
+private func seedStatistics(todayHourLoad: [Int: Int], todayBreakMinutes: [Int]) {
+    let store = StatisticsStore.shared
+    let cal = Calendar.current
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+
+    // (active minutes, breaks, skips, cycles) for offsets 6…1 days ago; weekend-ish days lighter.
+    let week: [(Int, Int, Int, Int)] = [
+        (355, 9, 1, 6), (410, 11, 2, 8), (150, 4, 0, 2),
+        (95, 3, 0, 1), (385, 10, 1, 7), (430, 12, 1, 9),
+    ]
+    for (i, sample) in week.enumerated() {
+        let offset = 6 - i
+        guard let date = cal.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+        var day = DayStat(date: formatter.string(from: date))
+        day.activeSeconds = sample.0 * 60
+        day.breaks = sample.1
+        day.skips = sample.2
+        day.cycles = sample.3
+        day.acks = sample.1 + sample.2
+        store.importDay(day)
+    }
+
+    var today = DayStat(date: StatisticsStore.todayKey())
+    today.activeSeconds = todayHourLoad.values.reduce(0, +)
+    for (hour, seconds) in todayHourLoad where today.activeByHour.indices.contains(hour) {
+        today.activeByHour[hour] = seconds
+    }
+    today.breaks = todayBreakMinutes.count
+    today.breakMinutes = todayBreakMinutes
+    today.skips = 1
+    today.cycles = 2
+    today.acks = today.breaks + today.skips
+    store.importDay(today)
 }

@@ -396,10 +396,9 @@ extension L10n {
 
         // Editor · tap-a-rhythm recording
         "editor.record":           ["敲一段节奏", "Tap a rhythm", "リズムをタップ"],
-        "editor.recordHint":       ["心里想着一段节奏，在下面的区域按它连续点按——每次点按就是一拍，点按之间的时间就是拍与拍的间隔。",
-                                    "Think of a rhythm and tap it out below — every tap becomes a beat, and the time between taps becomes the gap.",
-                                    "頭の中のリズムに合わせて下のエリアをタップ——タップが 1 拍になり、タップの間隔がそのまま拍の間隔になります。"],
-        "editor.recordPad":        ["跟着心里的节奏，点这里…", "Tap your rhythm here…", "ここをリズムに合わせてタップ…"],
+        "editor.recordHint":       ["心里想着一段节奏，照它敲下面的三只鼓（或按键盘 J / K / L）——每次敲击就是一拍，敲击之间的时间就是拍与拍的间隔。",
+                                    "Think of a rhythm and play it on the three drums below (or press J / K / L) — every hit becomes a beat, and the time between hits becomes the gap.",
+                                    "頭の中のリズムに合わせて下の 3 つのドラムを叩く（またはキーボードの J / K / L）——1 打が 1 拍になり、打つ間隔がそのまま拍の間隔になります。"],
         "editor.recordUse":        ["用这段节奏（%d 拍）", "Use this rhythm (%d taps)", "このリズムを使う（%d 拍）"],
 
         // Editor · import / export

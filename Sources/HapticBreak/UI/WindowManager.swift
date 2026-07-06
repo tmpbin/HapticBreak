@@ -61,10 +61,12 @@ final class WindowManager {
     }
 
     func showPatternEditor() {
+        // Width must cover the editor's inspector row (timbre picker + move/duplicate/delete
+        // cluster); anything narrower clips the trailing buttons.
         editorWindow = present(editorWindow,
                                title: L.t("editor.title"),
-                               size: NSSize(width: 560, height: 560),
-                               minSize: NSSize(width: 520, height: 480)) {
+                               size: NSSize(width: 700, height: 620),
+                               minSize: NSSize(width: 680, height: 520)) {
             PatternEditorView(viewModel: viewModel)
         }
     }

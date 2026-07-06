@@ -49,7 +49,10 @@ nav a:hover,nav button:hover{color:var(--fg)}
 .hero h1{font-size:clamp(44px,8.5vw,104px);line-height:1.04;font-weight:800;letter-spacing:-.02em;
   background:linear-gradient(180deg,#fff 20%,rgba(255,255,255,.55));-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero h1 em{font-style:normal;
-  background:linear-gradient(120deg,var(--amber),var(--amber2) 45%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+  background:linear-gradient(115deg,var(--amber) 0%,var(--amber2) 22%,#fff8ea 38%,var(--cyan) 55%,var(--amber2) 75%,var(--amber) 100%);
+  background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:shine 5.5s ease-in-out infinite}
+@keyframes shine{0%{background-position:0% 0}50%{background-position:100% 0}100%{background-position:0% 0}}
 .hero .sub{margin-top:26px;font-size:clamp(16px,2.2vw,21px);color:var(--dim);max-width:640px;line-height:1.65}
 .cta{display:flex;gap:14px;margin-top:44px;flex-wrap:wrap;justify-content:center}
 .btn{display:inline-flex;align-items:center;gap:10px;padding:15px 30px;border-radius:14px;font-size:16px;font-weight:600;
@@ -80,8 +83,8 @@ h2{font-size:clamp(30px,4.6vw,52px);font-weight:800;letter-spacing:-.015em;line-
 .card p{color:var(--dim);font-size:14.5px;line-height:1.7}
 .card .no{text-decoration:line-through;text-decoration-color:rgba(255,80,80,.75);text-decoration-thickness:2px}
 
-/* rhythm playground */
-.stage{margin-top:56px;background:rgba(8,10,18,.55);border:1px solid var(--panel-line);border-radius:24px;padding:34px;backdrop-filter:blur(14px)}
+/* rhythm playground — kept translucent (no blur) so the particle floor's ripples stay visible behind it */
+.stage{margin-top:56px;background:rgba(8,10,18,.30);border:1px solid var(--panel-line);border-radius:24px;padding:34px}
 .chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{padding:10px 18px;border-radius:99px;border:1px solid var(--panel-line);background:rgba(255,255,255,.03);
   color:var(--dim);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .25s}
@@ -96,12 +99,16 @@ h2{font-size:clamp(30px,4.6vw,52px);font-weight:800;letter-spacing:-.015em;line-
 .legend{display:flex;gap:20px;margin-top:14px;font-size:12.5px;color:var(--faint)}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
-/* screenshots */
+/* screenshots — macOS window chrome, equal-height frames so images & captions align across cards */
 .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:22px;margin-top:56px;perspective:1400px}
-.shot{border-radius:20px;overflow:hidden;border:1px solid var(--panel-line);background:rgba(10,12,20,.6);
+.shot{display:flex;flex-direction:column;border-radius:14px;overflow:hidden;border:1px solid var(--panel-line);background:rgba(16,19,28,.85);
   transition:transform .18s ease-out,box-shadow .3s;transform-style:preserve-3d;will-change:transform}
-.shot img{width:100%;display:block}
-.shot figcaption{padding:14px 18px;font-size:13.5px;color:var(--dim);border-top:1px solid rgba(255,255,255,.05)}
+.shot .chrome{display:flex;align-items:center;gap:7px;padding:11px 14px;background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.06);flex:0 0 auto}
+.shot .chrome i{width:11px;height:11px;border-radius:50%}
+.shot .chrome i:nth-child(1){background:#ff5f57}.shot .chrome i:nth-child(2){background:#febc2e}.shot .chrome i:nth-child(3){background:#28c840}
+.shot .frame{flex:1;height:320px;display:flex;align-items:center;justify-content:center;padding:14px;background:rgba(8,10,16,.6)}
+.shot .frame img{max-width:100%;max-height:100%;width:auto;height:auto;display:block;border-radius:6px}
+.shot figcaption{flex:0 0 auto;padding:13px 16px;font-size:13.5px;color:var(--dim);border-top:1px solid rgba(255,255,255,.05);text-align:center}
 .shot:hover{box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,149,0,.25)}
 
 /* install */
@@ -212,10 +219,10 @@ footer .sp{flex:1}
       <h2 class="reveal" data-i18n="shots.title">一枚菜单栏图标，一个会呼吸的圆环</h2>
       <p class="lead reveal" data-i18n="shots.lead">能量按秒释放的倒计时环、诚实的休息统计、随手能编的节奏画布。会议、全屏、勿扰、离开——都自动暂停，并把原因说给你听。</p>
       <div class="shots">
-        <figure class="shot reveal"><img src="assets/popover-dark.png" alt="control panel" loading="lazy"><figcaption data-i18n="shots.f1">控制面板 · 能量按秒释放</figcaption></figure>
-        <figure class="shot reveal"><img src="assets/popover-resting-dark.png" alt="resting" loading="lazy"><figcaption data-i18n="shots.f2">休息中 · 缓缓的呼吸光晕</figcaption></figure>
-        <figure class="shot reveal"><img src="assets/statistics-dark.png" alt="statistics" loading="lazy"><figcaption data-i18n="shots.f3">统计 · 诚实休息 + 连续天数</figcaption></figure>
-        <figure class="shot reveal"><img src="assets/editor-dark.png" alt="pattern editor" loading="lazy"><figcaption data-i18n="shots.f4">编辑器 · 敲一段自己的节奏</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/popover-dark.png" alt="control panel" loading="lazy"></div><figcaption data-i18n="shots.f1">控制面板 · 能量按秒释放</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/popover-resting-dark.png" alt="resting" loading="lazy"></div><figcaption data-i18n="shots.f2">休息中 · 缓缓的呼吸光晕</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/statistics-dark.png" alt="statistics" loading="lazy"></div><figcaption data-i18n="shots.f3">统计 · 诚实休息 + 连续天数</figcaption></figure>
+        <figure class="shot reveal"><div class="chrome"><i></i><i></i><i></i></div><div class="frame"><img src="assets/editor-dark.png" alt="pattern editor" loading="lazy"></div><figcaption data-i18n="shots.f4">编辑器 · 敲一段自己的节奏</figcaption></figure>
       </div>
     </div>
   </section>
@@ -272,13 +279,9 @@ footer .sp{flex:1}
   </div>
 </footer>
 
-<script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js"}}
-</script>
-<script type="module">
-import * as THREE from 'three';
-
-/* ================= i18n ================= */
+<!-- i18n runs as a classic inline script so the language is applied during parse,
+     before first paint — no flash of the wrong language while the 3D module loads. -->
+<script>
 const DICT = {
   zh: {
     'nav.feel':'感受节奏','nav.shots':'截图','nav.install':'安装',
@@ -354,8 +357,17 @@ function applyLang(){
   document.title = lang === 'zh' ? 'HapticBreak — 能被你摸到的休息提醒' : 'HapticBreak — A break reminder you feel';
 }
 document.getElementById('langBtn').addEventListener('click', () => {
-  lang = lang === 'zh' ? 'en' : 'zh'; localStorage.setItem('hb-lang', lang); applyLang(); renderChips();
+  lang = lang === 'zh' ? 'en' : 'zh'; localStorage.setItem('hb-lang', lang); applyLang();
+  if (window.renderChips) window.renderChips();
 });
+applyLang();
+</script>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
 
 /* ============ pattern data (mirrors HapticPattern.swift) ============ */
 /* step = [timbre s|c|b, strength 1-10, gapToNext ms] */
@@ -412,7 +424,7 @@ const uniforms = {
   uTime:      { value: 0 },
   uRipples:   { value: Array.from({length: MAX_R}, () => new THREE.Vector4(0, 0, -1e3, 0)) }, // x, z, startTime, strength
   uRippleCol: { value: Array.from({length: MAX_R}, () => new THREE.Color(0xffa028)) },
-  uBase:      { value: new THREE.Color(0x2b3450) },
+  uBase:      { value: new THREE.Color(0x3a4666) },
 };
 const mat = new THREE.ShaderMaterial({
   uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -425,8 +437,9 @@ const mat = new THREE.ShaderMaterial({
     varying float vGlow;
     void main(){
       vec3 pos = position;
-      // ambient breathing swell
-      pos.y += 0.22 * sin(pos.x * 0.35 + uTime * 0.6) * sin(pos.z * 0.3 + uTime * 0.45);
+      // ambient breathing swell — two offset wave trains so the floor visibly rolls even at rest
+      pos.y += 0.30 * sin(pos.x * 0.35 + uTime * 0.6) * sin(pos.z * 0.3 + uTime * 0.45);
+      pos.y += 0.14 * sin(pos.x * 0.18 - uTime * 0.35 + pos.z * 0.22);
       vec3 col = uBase;
       float glow = 0.0;
       for (int i = 0; i < ${MAX_R}; i++) {
@@ -445,7 +458,7 @@ const mat = new THREE.ShaderMaterial({
       vColor = col; vGlow = glow;
       vec4 mv = modelViewMatrix * vec4(pos, 1.0);
       gl_Position = projectionMatrix * mv;
-      gl_PointSize = (2.2 + vGlow * 5.0) * (30.0 / -mv.z);
+      gl_PointSize = (2.6 + vGlow * 5.0) * (30.0 / -mv.z);
     }`,
   fragmentShader: /* glsl */`
     varying vec3 vColor;
@@ -453,7 +466,7 @@ const mat = new THREE.ShaderMaterial({
     void main(){
       vec2 uv = gl_PointCoord - 0.5;
       float a = smoothstep(0.5, 0.05, length(uv));
-      gl_FragColor = vec4(vColor, a * (0.30 + min(vGlow, 1.4) * 0.7));
+      gl_FragColor = vec4(vColor, a * (0.42 + min(vGlow, 1.4) * 0.7));
     }`,
 });
 const points = new THREE.Points(geo, mat);
@@ -475,22 +488,51 @@ const flashTex = (() => {
   return new THREE.CanvasTexture(c);
 })();
 const flashes = [];
-function beatPulse(timbre, strength, xOffset = 0) {
+function spawnRipple(x, z, strength, color) {
+  const u = uniforms.uRipples.value[rippleIdx];
+  u.set(x, z, clockTime, strength);
+  uniforms.uRippleCol.value[rippleIdx].copy(color);
+  rippleIdx = (rippleIdx + 1) % MAX_R;
+}
+function beatPulse(timbre, strength, xOffset = 0, zOffset = 0) {
   const now = clockTime;
   const s = strength / 10;
-  const u = uniforms.uRipples.value[rippleIdx];
-  u.set(xOffset, 0, now, 0.35 + s * 1.15);
-  uniforms.uRippleCol.value[rippleIdx].copy(TIMBRE_COLOR[timbre]);
-  rippleIdx = (rippleIdx + 1) % MAX_R;
+  spawnRipple(xOffset, zOffset, 0.35 + s * 1.15, TIMBRE_COLOR[timbre]);
 
   const m = new THREE.SpriteMaterial({ map: flashTex, color: TIMBRE_COLOR[timbre], transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
   const sp = new THREE.Sprite(m);
-  sp.position.set(xOffset, points.position.y + 0.5, 0);
+  sp.position.set(xOffset, points.position.y + 0.5, zOffset);
   const sc = 2 + s * 7;
   sp.scale.setScalar(sc);
   flashGroup.add(sp);
   flashes.push({ sp, born: now, scale: sc });
 }
+
+/* always-on gentle water: a soft ripple wanders across the floor every couple of seconds */
+const AMBIENT_COLOR = new THREE.Color(0x4a6f9f);
+setInterval(() => {
+  if (document.hidden) return;
+  spawnRipple((Math.random() - 0.5) * 40, (Math.random() - 0.5) * 22,
+              0.22 + Math.random() * 0.15, AMBIENT_COLOR);
+}, 1500);
+
+/* clicking any blank spot drops a stone into the water */
+const raycaster = new THREE.Raycaster();
+function screenToFloor(cx, cy) {
+  const ndc = new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight * 2 - 1));
+  raycaster.setFromCamera(ndc, camera);
+  const dy = raycaster.ray.direction.y;
+  if (Math.abs(dy) < 1e-4) return null;
+  const t = (points.position.y - raycaster.ray.origin.y) / dy;
+  if (t <= 0) return null;
+  const p = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, t);
+  return { x: THREE.MathUtils.clamp(p.x, -30, 30), z: THREE.MathUtils.clamp(p.z, -20, 20) };
+}
+addEventListener('pointerdown', e => {
+  if (e.target.closest('a,button,input,select,textarea,nav,.chip,.shot,.term,.beatline')) return;
+  const hit = screenToFloor(e.clientX, e.clientY);
+  if (hit) beatPulse('c', 8, hit.x, hit.z);
+});
 
 /* mouse parallax + scroll */
 let mx = 0, my = 0;
@@ -645,7 +687,7 @@ fetch('https://api.github.com/repos/tmpbin/HapticBreak/releases/latest')
     if (dmg) document.getElementById('dlBtn').href = dmg.browser_download_url;
   }).catch(() => {});
 
-applyLang();
+window.renderChips = renderChips;
 </script>
 </body>
 </html>

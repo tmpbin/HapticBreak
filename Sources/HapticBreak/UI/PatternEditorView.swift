@@ -22,6 +22,7 @@ struct PatternEditorView: View {
     @State private var recording = false
     @State private var recordedSteps: [HapticStep] = []
     @State private var lastTapAt: Date?
+    @State private var keyMonitor: Any?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,7 +37,7 @@ struct PatternEditorView: View {
                 .padding(16)
             }
         }
-        .frame(minWidth: 620, maxWidth: .infinity, minHeight: 540, maxHeight: .infinity)
+        .frame(minWidth: 660, maxWidth: .infinity, minHeight: 540, maxHeight: .infinity)
         .sheet(isPresented: $showFormatHelp) { formatHelpSheet }
     }
 
@@ -291,7 +292,12 @@ struct PatternEditorView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
     }
 
-    // MARK: - Rhythm recording (tap the rhythm, gaps are captured)
+    // MARK: - Rhythm recording (three drum pads — click or play the keyboard; gaps are captured)
+
+    /// Drum kit: one pad per timbre, with a home-row key each (J/K/L) so a rhythm can be *played*.
+    private static let drums: [(timbre: HapticTimbre, key: String)] = [
+        (.soft, "J"), (.crisp, "K"), (.buzz, "L"),
+    ]
 
     private var recordPad: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -299,25 +305,16 @@ struct PatternEditorView: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button {
-                recordTap()
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "hand.tap.fill").font(.system(size: 28))
-                    Text(L.t("editor.recordPad")).font(.callout)
-                    Text(recordedSteps.isEmpty ? " " : L.t("editor.steps", recordedSteps.count))
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                ForEach(Self.drums, id: \.key) { drum in
+                    drumPad(drum.timbre, key: drum.key)
                 }
-                .frame(maxWidth: .infinity, minHeight: 150)
             }
-            .buttonStyle(.plain)
-            .background(Color.accentColor.opacity(0.10))
-            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
 
             HStack {
-                Button(L.t("btn.cancel")) { recording = false }
+                Button(L.t("btn.cancel")) { stopRecording() }
+                Text(recordedSteps.isEmpty ? " " : L.t("editor.steps", recordedSteps.count))
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     finishRecording()
@@ -326,31 +323,86 @@ struct PatternEditorView: View {
                 .disabled(recordedSteps.count < 2)
             }
         }
+        .onDisappear { removeKeyMonitor() }
+    }
+
+    private func drumPad(_ timbre: HapticTimbre, key: String) -> some View {
+        let color = timbreColor(timbre)
+        return Button {
+            recordTap(timbre)
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: timbre.symbol).font(.system(size: 26))
+                Text(timbre.displayName).font(.callout)
+                Text(key)
+                    .font(.caption.weight(.semibold).monospaced())
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Theme.neutralFill)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+            }
+            .frame(maxWidth: .infinity, minHeight: 140)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(color)
+        .background(color.opacity(0.10))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+            .strokeBorder(color.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
     }
 
     private func startRecording() {
         recordedSteps = []
         lastTapAt = nil
         recording = true
+        installKeyMonitor()
     }
 
-    private func recordTap() {
+    private func stopRecording() {
+        recording = false
+        removeKeyMonitor()
+    }
+
+    /// While recording, J/K/L play the drums. Keys are only captured when no text field is being
+    /// edited, so typing a pattern name never triggers beats.
+    private func installKeyMonitor() {
+        removeKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard recording,
+                  !(NSApp.keyWindow?.firstResponder is NSTextView),
+                  let chars = event.charactersIgnoringModifiers?.uppercased(),
+                  let drum = Self.drums.first(where: { $0.key == chars })
+            else { return event }
+            recordTap(drum.timbre)
+            return nil
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+    }
+
+    private func recordTap(_ timbre: HapticTimbre) {
         let now = Date()
         if let last = lastTapAt, let lastIndex = recordedSteps.indices.last {
             let gap = Int(now.timeIntervalSince(last) * 1000)
             recordedSteps[lastIndex].gapMsAfter = max(60, min(2000, gap))
         }
-        let step = HapticStep(timbre: .crisp, strength: 6, dullness: 0.3, gapMsAfter: 0)
+        let dullness: Double = timbre == .buzz ? 0.6 : 0.3
+        let step = HapticStep(timbre: timbre, strength: timbre == .buzz ? 7 : 6,
+                              dullness: dullness, gapMsAfter: 0)
         recordedSteps.append(step)
         lastTapAt = now
         viewModel.testStep(step)
     }
 
     private func finishRecording() {
-        guard recordedSteps.count >= 2 else { recording = false; return }
+        defer { stopRecording() }
+        guard recordedSteps.count >= 2 else { return }
         draft.steps = recordedSteps
         selectedID = recordedSteps.first?.id
-        recording = false
     }
 
     // MARK: - Advanced (dullness + unify + JSON)
