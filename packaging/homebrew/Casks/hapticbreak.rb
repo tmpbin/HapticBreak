@@ -3,10 +3,9 @@
 # 用法（放入你自己的 tap，例如 github.com/tmpbin/homebrew-tap 的 Casks/ 目录）：
 #
 #   brew tap tmpbin/tap
-#   # 已公证版本：
 #   brew install --cask hapticbreak
-#   # 未公证（ad-hoc）版本——跳过隔离即可免「已损坏」提示：
-#   brew install --cask --no-quarantine hapticbreak
+#   # 未公证（ad-hoc）版本装完后放行一次（新版 brew 已禁用 --no-quarantine 开关）：
+#   xattr -dr com.apple.quarantine /Applications/HapticBreak.app
 #
 # 发版维护：每次 Release 后更新 version 与 sha256（可由 CI 自动 bump，见 docs）。
 #   sha256:  shasum -a 256 HapticBreak-<版本>.dmg

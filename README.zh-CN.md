@@ -70,8 +70,9 @@
 
 ```bash
 brew tap tmpbin/tap
-brew install --cask --no-quarantine hapticbreak   # 未公证版本加 --no-quarantine 免「已损坏」提示
-brew upgrade --cask hapticbreak                    # 以后升级一条命令
+brew install --cask hapticbreak
+xattr -dr com.apple.quarantine /Applications/HapticBreak.app   # 未公证版本放行一次
+brew upgrade --cask hapticbreak                                 # 以后升级一条命令
 ```
 
 ### 或者下载 `.dmg` 手动放行一次

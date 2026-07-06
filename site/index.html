@@ -249,9 +249,10 @@ footer .sp{flex:1}
         <div class="reveal">
           <div class="term">
             <div class="bar"><i></i><i></i><i></i><span>Homebrew</span>
-              <button class="copy" data-copy="brew tap tmpbin/tap && brew install --cask --no-quarantine hapticbreak" data-i18n="install.copy">复制</button></div>
+              <button class="copy" data-copy="brew tap tmpbin/tap && brew install --cask hapticbreak && xattr -dr com.apple.quarantine /Applications/HapticBreak.app" data-i18n="install.copy">复制</button></div>
             <pre><b>$</b> brew tap tmpbin/tap
-<b>$</b> brew install --cask --no-quarantine hapticbreak</pre>
+<b>$</b> brew install --cask hapticbreak
+<b>$</b> xattr -dr com.apple.quarantine /Applications/HapticBreak.app</pre>
           </div>
           <p class="install-note" data-i18n="install.brewNote">以后升级只需 brew upgrade --cask hapticbreak；应用内也会自动静默升级。</p>
         </div>

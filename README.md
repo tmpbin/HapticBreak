@@ -70,8 +70,9 @@ A buzz is just a buzz. **A rhythm is a feeling.** HapticBreak treats your trackp
 
 ```bash
 brew tap tmpbin/tap
-brew install --cask --no-quarantine hapticbreak   # --no-quarantine avoids the "damaged" prompt on unnotarized builds
-brew upgrade --cask hapticbreak                    # upgrades later are one command
+brew install --cask hapticbreak
+xattr -dr com.apple.quarantine /Applications/HapticBreak.app   # allow the unnotarized build once
+brew upgrade --cask hapticbreak                                 # upgrades later are one command
 ```
 
 ### Or download the `.dmg` and allow it once
