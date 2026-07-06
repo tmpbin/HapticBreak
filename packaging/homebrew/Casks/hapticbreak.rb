@@ -12,7 +12,7 @@
 
 cask "hapticbreak" do
   version "1.0.2"
-  sha256 :no_check # 由发布后脚本回填：shasum -a 256 HapticBreak-1.0.2.dmg
+  sha256 "7bfbb6d63cce0cf52c27d8497dfcfb90cb597d24b77551bbf03ce18f16bf40d1"
 
   url "https://github.com/tmpbin/HapticBreak/releases/download/v#{version}/HapticBreak-#{version}.dmg",
       verified: "github.com/tmpbin/HapticBreak/"
