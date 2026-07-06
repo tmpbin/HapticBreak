@@ -34,7 +34,7 @@ bash packaging/autoupdate/setup-keys.sh
 
 - **Secret**：`Settings → Secrets and variables → Actions` 新建 `UPDATE_PRIVATE_KEY`，值为 `eddsa_private.key` 全文（脚本已打印）。
 - **Pages**：`Settings → Pages`，Source 选 `gh-pages` 分支（首次发布后该分支才会由 CI 自动创建，创建后再来打开）。
-- **升级源**：编辑 [`appcast-url.txt`](appcast-url.txt)，把 `OWNER`/`HapticBreak` 换成你的 `用户名`/`仓库名`。
+- **升级源**：[`appcast-url.txt`](appcast-url.txt) 当前指向 `tmpbin/HapticBreak` 的 GitHub Pages；fork 后换成你的 `用户名`/`仓库名`。
 
 ### 3. 提交公钥与配置
 
@@ -47,7 +47,7 @@ git add packaging/autoupdate/eddsa_public.key packaging/autoupdate/appcast-url.t
 打个 tag 即可，CI 全自动：
 
 ```bash
-git tag v1.1.0 && git push --tags
+git tag vX.Y.Z && git push --tags
 ```
 
 `release.yml` 会：构建 → 打包 → 建 Release → 用私钥 `generate_appcast` 生成/追加 `appcast.xml` → 推送到 `gh-pages`。已安装用户下次检查更新即可获得。
@@ -64,7 +64,7 @@ git tag v1.1.0 && git push --tags
 ```bash
 mkdir -p /tmp/arch && cp build/HapticBreak-*.dmg /tmp/arch/
 .build/artifacts/*/Sparkle/bin/generate_appcast \
-  --download-url-prefix "https://github.com/OWNER/HapticBreak/releases/download/vX.Y.Z/" \
+  --download-url-prefix "https://github.com/tmpbin/HapticBreak/releases/download/vX.Y.Z/" \
   /tmp/arch
 cat /tmp/arch/appcast.xml
 ```

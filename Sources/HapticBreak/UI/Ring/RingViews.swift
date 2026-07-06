@@ -150,6 +150,9 @@ private struct ImpactBurst: View {
 }
 
 /// Center readout: status icon + large countdown + status text.
+/// The icon and status rows have fixed heights: hovering swaps in the tap-hint symbol/label, and
+/// different SF Symbols / strings have different intrinsic heights — without the fixed frames the
+/// whole centered stack (including the time) would shift vertically on every hover.
 private struct CenterReadout: View {
     var timeText: String
     var statusText: String
@@ -160,14 +163,34 @@ private struct CenterReadout: View {
             Image(systemName: statusSymbol)
                 .font(.system(size: 14))
                 .foregroundStyle(color)
+                .frame(height: 17)
             Text(timeText)
                 .font(.system(size: 34, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
             Text(statusText)
                 .font(.caption)
+                .lineLimit(1)
                 .foregroundStyle(.secondary)
+                .frame(height: 15)
         }
+    }
+}
+
+/// Rest-phase breathing halo: a soft glow behind the ring that swells and settles on an 8-second
+/// breath cycle. Driven by the existing 1 Hz elapsed value — the target flips every 4 s and the
+/// implicit ease interpolates, so there is **no repeatForever** (the panel-CPU hard rule).
+private struct BreathingHalo: View {
+    var color: Color
+    var elapsed: Int
+    var body: some View {
+        let inhale = (elapsed / 4) % 2 == 0
+        Circle()
+            .fill(color.opacity(0.16))
+            .blur(radius: 18)
+            .scaleEffect(inhale ? 1.06 : 0.80)
+            .animation(.easeInOut(duration: 4), value: inhale)
+            .allowsHitTesting(false)
     }
 }
 
@@ -198,19 +221,29 @@ struct CountdownRing: View {
     var statusSymbol: String
     var animated: Bool = true     // false when paused/waiting: the second hand dims and doesn't trigger deductions
     var size: CGFloat = 146
+    var breathing: Bool = false   // Rest phase: soft breathing halo behind the ring
     var onImpact: (() -> Void)? = nil   // Hit event (deduct one grid per minute): drives the upper layer's strong buzz etc.; UI doesn't hold the engine
+    /// Click on the ring = the primary action (pause/resume, or acknowledge while reminding).
+    /// The hover hint (symbol + label) temporarily replaces the status readout for discoverability.
+    var onTap: (() -> Void)? = nil
+    var tapHint: (symbol: String, label: String)? = nil
 
     private let lineWidth: CGFloat = 8
 
     /// L1 truth (lit/grids); L2 animation state.
     @State private var model = RingModel(.init(remaining: 0, total: 1, animated: true))
     @StateObject private var anim = RingAnimator()
+    @State private var hovering = false
 
     private var input: RingModel.Input { .init(remaining: remaining, total: total, animated: animated) }
     private var geo: RingGeometry { RingGeometry(size: size, lineWidth: lineWidth) }
 
     var body: some View {
         ZStack {
+            if breathing {
+                BreathingHalo(color: color, elapsed: max(0, total - remaining))
+            }
+
             MinuteArc(lit: anim.displayedLit, grids: model.grids,
                       color: color, lineWidth: lineWidth, flash: anim.minuteFlash)
 
@@ -239,10 +272,18 @@ struct CountdownRing: View {
                                minuteTick: model.lit,
                                active: animated)
 
-            CenterReadout(timeText: timeText, statusText: statusText,
-                          statusSymbol: statusSymbol, color: color)
+            // While hovering (and clickable) the readout previews the click action instead of the status.
+            CenterReadout(timeText: timeText,
+                          statusText: (hovering && tapHint != nil) ? tapHint!.label : statusText,
+                          statusSymbol: (hovering && tapHint != nil) ? tapHint!.symbol : statusSymbol,
+                          color: color)
         }
         .frame(width: size, height: size)
+        .contentShape(Circle())
+        .onTapGesture { onTap?() }
+        .onHover { inside in
+            if hovering != (inside && onTap != nil) { hovering = inside && onTap != nil }
+        }
         .onAppear {
             model = RingModel(input)
             anim.onImpact = onImpact

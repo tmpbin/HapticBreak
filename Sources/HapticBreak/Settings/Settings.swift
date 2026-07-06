@@ -31,26 +31,33 @@ final class Settings: ObservableObject {
     /// Selectable reminder intervals (minutes).
     static let intervalOptions = [15, 20, 25, 30, 45, 60]
 
-    // MARK: - Reminder
+    // MARK: - Reminder / cycle
     @Published var breakIntervalMinutes: Int { didSet { persist(breakIntervalMinutes, .interval) } }
+    /// Rest segment length in minutes. 0 = reminder only (no timed rest segment). Unifies the old
+    /// "periodic reminder vs pomodoro" split into a single work X / rest Y model.
+    @Published var restMinutes: Int { didSet { persist(restMinutes, .restMinutes) } }
     @Published var selectedPatternID: String { didSet { persist(selectedPatternID, .pattern) } }
     /// Pattern used for the heads-up (a light hint before a break).
     @Published var headsUpPatternID: String { didSet { persist(headsUpPatternID, .headsUpPattern) } }
-    /// Pattern used on finish (rest ends / pomodoro segment switch).
+    /// Pattern used on finish (rest segment ends).
     @Published var finishPatternID: String { didSet { persist(finishPatternID, .finishPattern) } }
     /// Global haptic strength 1…10 (multiplicative main gain; old 1…5 auto-migrated ×2).
     @Published var strength: Int { didSet { persist(strength, .strength) } }
     @Published var postponeMinutes: Int { didSet { persist(postponeMinutes, .postpone) } }
-    /// How many times to replay the whole pattern per reminder — a single buzz is easy to miss, raise for more prominence.
-    @Published var reminderRepeat: Int { didSet { persist(reminderRepeat, .reminderRepeat) } }
+
+    // MARK: - Acknowledge-to-stop reminding
+    /// Seconds between gentle follow-up nudges while a reminder awaits acknowledgment.
+    @Published var remindPulseSeconds: Int { didSet { persist(remindPulseSeconds, .pulseSeconds) } }
+    /// Total nudges (including the initial reminder) before the reminder silently auto-postpones.
+    @Published var remindPulseMax: Int { didSet { persist(remindPulseMax, .pulseMax) } }
+    /// Acknowledge the reminder with a three-finger triple-tap on the trackpad (listened for only while reminding).
+    @Published var ackGestureEnabled: Bool { didSet { persist(ackGestureEnabled, .ackGesture) } }
 
     // MARK: - Respectful / smart reminders
     /// If you're typing at the deadline, wait for a natural pause before buzzing (CR-01).
     @Published var typingAwareDefer: Bool { didSet { persist(typingAwareDefer, .typingDefer) } }
     /// One very faint "heads-up tap" ~30s early (CR-02).
     @Published var gentleHeadsUp: Bool { didSet { persist(gentleHeadsUp, .headsUp) } }
-    /// On consecutive skips/postpones, the next reminder is slightly stronger and denser; decays on natural completion (CR-05, off by default).
-    @Published var skipEscalation: Bool { didSet { persist(skipEscalation, .escalation) } }
     /// While the control panel is visible, overlay the faintest "heartbeat" as a breathing companion (can be off).
     @Published var panelHeartbeat: Bool { didSet { persist(panelHeartbeat, .panelHeartbeat) } }
 
@@ -62,11 +69,6 @@ final class Settings: ObservableObject {
     @Published var respectFocusMode: Bool { didSet { persist(respectFocusMode, .focus) } }
     /// Auto-pause when the microphone is in use (call/meeting) (CR-06).
     @Published var pauseDuringMic: Bool { didSet { persist(pauseDuringMic, .pauseMic) } }
-
-    // MARK: - Pomodoro
-    @Published var pomodoroEnabled: Bool { didSet { persist(pomodoroEnabled, .pomodoro) } }
-    @Published var pomodoroWorkMinutes: Int { didSet { persist(pomodoroWorkMinutes, .pomoWork) } }
-    @Published var pomodoroBreakMinutes: Int { didSet { persist(pomodoroBreakMinutes, .pomoBreak) } }
 
     // MARK: - Auxiliary reminders
     @Published var auxFlashScreen: Bool { didSet { persist(auxFlashScreen, .flash) } }
@@ -84,6 +86,8 @@ final class Settings: ObservableObject {
         }
     }
     @Published var enableShortcuts: Bool { didSet { persist(enableShortcuts, .shortcuts) } }
+    /// The four global shortcuts (user-editable). Stored as one JSON blob.
+    @Published var hotKeys: HotKeyBindings { didSet { persistHotKeys() } }
     /// In-app automatic update checking (Sparkle). Synced to Sparkle's `automaticallyChecksForUpdates`.
     @Published var autoUpdateCheck: Bool { didSet { persist(autoUpdateCheck, .autoUpdate) } }
     @Published var backend: HapticBackend {
@@ -99,8 +103,14 @@ final class Settings: ObservableObject {
         set { defaults.set(newValue, forKey: Key.hasLaunched.full) }
     }
 
+    /// One-time intro line in the control panel (flipped after the panel is first closed).
+    var hasSeenPanelIntro: Bool {
+        get { defaults.bool(forKey: Key.seenPanelIntro.full) }
+        set { defaults.set(newValue, forKey: Key.seenPanelIntro.full) }
+    }
+
     // MARK: - Derived
-    var workMinutes: Int { pomodoroEnabled ? pomodoroWorkMinutes : breakIntervalMinutes }
+    var workMinutes: Int { breakIntervalMinutes }
 
     var allPatterns: [HapticPattern] { HapticPattern.builtins + customPatterns }
 
@@ -137,15 +147,17 @@ final class Settings: ObservableObject {
     // MARK: - Factory defaults (init read fallbacks and "restore defaults" share one source of truth, preventing drift between the two)
     private enum Default {
         static let interval = 25
+        static let restMinutes = 0
         static let pattern = HapticPattern.urgent.id
-        static let headsUpPattern = HapticPattern.gentle.id
-        static let finishPattern = HapticPattern.breathe.id
+        static let headsUpPattern = HapticPattern.ripple.id
+        static let finishPattern = HapticPattern.ramp.id
         static let strength = 6
         static let postpone = 5
-        static let reminderRepeat = 3
+        static let pulseSeconds = 20
+        static let pulseMax = 4
+        static let ackGesture = true
         static let typingDefer = true
         static let headsUp = true
-        static let escalation = false
         static let panelHeartbeat = true
         static let idleEnabled = true
         static let idlePause = 60
@@ -153,9 +165,6 @@ final class Settings: ObservableObject {
         static let fullscreen = true
         static let focus = true
         static let pauseMic = true
-        static let pomodoro = false
-        static let pomoWork = 25
-        static let pomoBreak = 5
         static let flash = true
         static let menubarHi = true
         static let sound = false
@@ -171,16 +180,19 @@ final class Settings: ObservableObject {
     /// Defaults to `.standard` (app shared singleton); tests/ephemeral runs inject an in-memory implementation for isolation, zero disk footprint.
     init(defaults: KeyValueStore = UserDefaults.standard) {
         self.defaults = defaults
+        Settings.migrateLegacyPomodoro(defaults)
         breakIntervalMinutes  = Settings.read(defaults, .interval, Default.interval)
+        restMinutes           = Settings.read(defaults, .restMinutes, Default.restMinutes)
         selectedPatternID     = Settings.read(defaults, .pattern, Default.pattern)
         headsUpPatternID      = Settings.read(defaults, .headsUpPattern, Default.headsUpPattern)
         finishPatternID       = Settings.read(defaults, .finishPattern, Default.finishPattern)
         strength              = Settings.migrateStrength(defaults)
         postponeMinutes       = Settings.read(defaults, .postpone, Default.postpone)
-        reminderRepeat        = Settings.read(defaults, .reminderRepeat, Default.reminderRepeat)
+        remindPulseSeconds    = Settings.read(defaults, .pulseSeconds, Default.pulseSeconds)
+        remindPulseMax        = Settings.read(defaults, .pulseMax, Default.pulseMax)
+        ackGestureEnabled     = Settings.read(defaults, .ackGesture, Default.ackGesture)
         typingAwareDefer      = Settings.read(defaults, .typingDefer, Default.typingDefer)
         gentleHeadsUp         = Settings.read(defaults, .headsUp, Default.headsUp)
-        skipEscalation        = Settings.read(defaults, .escalation, Default.escalation)
         panelHeartbeat        = Settings.read(defaults, .panelHeartbeat, Default.panelHeartbeat)
         idleEnabled           = Settings.read(defaults, .idleEnabled, Default.idleEnabled)
         idlePauseSeconds      = Settings.read(defaults, .idlePause, Default.idlePause)
@@ -188,9 +200,6 @@ final class Settings: ObservableObject {
         skipDuringFullscreen  = Settings.read(defaults, .fullscreen, Default.fullscreen)
         respectFocusMode      = Settings.read(defaults, .focus, Default.focus)
         pauseDuringMic        = Settings.read(defaults, .pauseMic, Default.pauseMic)
-        pomodoroEnabled       = Settings.read(defaults, .pomodoro, Default.pomodoro)
-        pomodoroWorkMinutes   = Settings.read(defaults, .pomoWork, Default.pomoWork)
-        pomodoroBreakMinutes  = Settings.read(defaults, .pomoBreak, Default.pomoBreak)
         auxFlashScreen        = Settings.read(defaults, .flash, Default.flash)
         auxMenubarHighlight   = Settings.read(defaults, .menubarHi, Default.menubarHi)
         soundEnabled          = Settings.read(defaults, .sound, Default.sound)
@@ -198,9 +207,15 @@ final class Settings: ObservableObject {
         menuBarStyle          = MenuBarStyle(rawValue: Settings.read(defaults, .menuBarStyle, Default.menuBarStyle.rawValue)) ?? Default.menuBarStyle
         launchAtLogin         = Settings.read(defaults, .login, Default.login)
         enableShortcuts       = Settings.read(defaults, .shortcuts, Default.shortcuts)
+        hotKeys               = Settings.readHotKeys(defaults)
         autoUpdateCheck       = Settings.read(defaults, .autoUpdate, Default.autoUpdate)
         backend               = HapticBackend(rawValue: Settings.read(defaults, .backend, Default.backend.rawValue)) ?? Default.backend
         customPatterns        = Settings.readPatterns(defaults)
+        // Stored IDs may point at a built-in preset removed in an update; fall back to the defaults
+        // so the pickers never show an empty selection (runs before `ready`, so no broadcast storm).
+        if pattern(for: selectedPatternID) == nil { selectedPatternID = Default.pattern }
+        if pattern(for: headsUpPatternID)  == nil { headsUpPatternID  = Default.headsUpPattern }
+        if pattern(for: finishPatternID)   == nil { finishPatternID   = Default.finishPattern }
         ready = true
     }
 
@@ -210,15 +225,17 @@ final class Settings: ObservableObject {
     func resetToDefaults() {
         ready = false
         breakIntervalMinutes  = Default.interval
+        restMinutes           = Default.restMinutes
         selectedPatternID     = Default.pattern
         headsUpPatternID      = Default.headsUpPattern
         finishPatternID       = Default.finishPattern
         strength              = Default.strength
         postponeMinutes       = Default.postpone
-        reminderRepeat        = Default.reminderRepeat
+        remindPulseSeconds    = Default.pulseSeconds
+        remindPulseMax        = Default.pulseMax
+        ackGestureEnabled     = Default.ackGesture
         typingAwareDefer      = Default.typingDefer
         gentleHeadsUp         = Default.headsUp
-        skipEscalation        = Default.escalation
         panelHeartbeat        = Default.panelHeartbeat
         idleEnabled           = Default.idleEnabled
         idlePauseSeconds      = Default.idlePause
@@ -226,9 +243,6 @@ final class Settings: ObservableObject {
         skipDuringFullscreen  = Default.fullscreen
         respectFocusMode      = Default.focus
         pauseDuringMic        = Default.pauseMic
-        pomodoroEnabled       = Default.pomodoro
-        pomodoroWorkMinutes   = Default.pomoWork
-        pomodoroBreakMinutes  = Default.pomoBreak
         auxFlashScreen        = Default.flash
         auxMenubarHighlight   = Default.menubarHi
         soundEnabled          = Default.sound
@@ -236,6 +250,7 @@ final class Settings: ObservableObject {
         menuBarStyle          = Default.menuBarStyle
         launchAtLogin         = Default.login
         enableShortcuts       = Default.shortcuts
+        hotKeys               = HotKeyBindings.defaults
         autoUpdateCheck       = Default.autoUpdate
         backend               = Default.backend
         ready = true
@@ -245,14 +260,14 @@ final class Settings: ObservableObject {
 
     // MARK: - Persistence
     private enum Key: String {
-        case interval, pattern, headsUpPattern, finishPattern, strength, postpone, reminderRepeat
-        case typingDefer, headsUp, escalation, panelHeartbeat
+        case interval, restMinutes, pattern, headsUpPattern, finishPattern, strength, postpone
+        case pulseSeconds, pulseMax, ackGesture
+        case typingDefer, headsUp, panelHeartbeat
         case idleEnabled, idlePause, idleReset, fullscreen, focus, pauseMic
-        case pomodoro, pomoWork, pomoBreak
         case flash, menubarHi, sound, soundName, menuBarStyle
-        case login, shortcuts, autoUpdate, backend
+        case login, shortcuts, hotKeys, autoUpdate, backend
         case customPatterns
-        case hasLaunched
+        case hasLaunched, seenPanelIntro
 
         var full: String { "hb." + rawValue }
     }
@@ -269,8 +284,45 @@ final class Settings: ObservableObject {
         if ready { NotificationCenter.default.post(name: .hbSettingsChanged, object: nil) }
     }
 
+    private func persistHotKeys() {
+        if let data = try? JSONEncoder().encode(hotKeys) {
+            defaults.set(data, forKey: Key.hotKeys.full)
+        }
+        if ready { NotificationCenter.default.post(name: .hbSettingsChanged, object: nil) }
+    }
+
+    private static func readHotKeys(_ defaults: KeyValueStore) -> HotKeyBindings {
+        guard let data = defaults.data(forKey: Key.hotKeys.full),
+              let bindings = try? JSONDecoder().decode(HotKeyBindings.self, from: data)
+        else { return .defaults }
+        return bindings
+    }
+
     private static func read<T>(_ defaults: KeyValueStore, _ key: Key, _ fallback: T) -> T {
         defaults.object(forKey: key.full) as? T ?? fallback
+    }
+
+    /// One-time migration of the legacy pomodoro model into the unified work/rest cycle:
+    /// pomodoro on → interval takes the old work length (snapped to the nearest selectable option)
+    /// and `restMinutes` the old break length; pomodoro off → `restMinutes = 0` (pure reminder).
+    /// The legacy keys (`hb.pomodoro` / `hb.pomoWork` / `hb.pomoBreak` and the retired
+    /// `hb.reminderRepeat` / `hb.escalation`) are removed afterwards.
+    private static func migrateLegacyPomodoro(_ defaults: KeyValueStore) {
+        if defaults.object(forKey: Key.restMinutes.full) == nil,
+           let pomodoroOn = defaults.object(forKey: "hb.pomodoro") as? Bool {
+            if pomodoroOn {
+                let work = defaults.object(forKey: "hb.pomoWork") as? Int ?? 25
+                let rest = defaults.object(forKey: "hb.pomoBreak") as? Int ?? 5
+                let snapped = intervalOptions.min { abs($0 - work) < abs($1 - work) } ?? Default.interval
+                defaults.set(snapped, forKey: Key.interval.full)
+                defaults.set(max(1, min(30, rest)), forKey: Key.restMinutes.full)
+            } else {
+                defaults.set(0, forKey: Key.restMinutes.full)
+            }
+        }
+        for legacy in ["hb.pomodoro", "hb.pomoWork", "hb.pomoBreak", "hb.reminderRepeat", "hb.escalation"] {
+            defaults.set(nil, forKey: legacy)
+        }
     }
 
     /// Global strength migration: prefer the new key `hb.strength`; otherwise migrate the old key

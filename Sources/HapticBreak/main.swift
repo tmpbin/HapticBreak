@@ -52,6 +52,26 @@ if CommandLine.arguments.contains("--rhythms") {
     exit(engine.isAvailable ? 0 : 2)
 }
 
+// Preset audition: play EVERY built-in pattern back-to-back (optionally at a given global strength,
+// default 6) — the release-readiness pass to catch presets that are imperceptible on real hardware.
+// Usage: --presets [1-10]
+if let idx = CommandLine.arguments.firstIndex(of: "--presets") {
+    setvbuf(stdout, nil, _IONBF, 0)
+    let strength = min(10, max(1, CommandLine.arguments.dropFirst(idx + 1).first.flatMap { Int($0) } ?? 6))
+    let engine = HapticEngineFactory.make(.auto, debug: false)
+    print("backend=\(engine.backendName) available=\(engine.isAvailable)  global strength=\(strength)")
+    let player = HapticPlayer(engine: engine)
+    for category in [HapticPatternCategory.basic, .nature, .rhythm] {
+        print("— \(category.rawValue) —")
+        for pattern in HapticPattern.builtins(in: category) {
+            print("  ▶︎ \(pattern.displayName)  ·  \(pattern.steps.count) beats  ·  ~\(String(format: "%.1f", pattern.estimatedDuration))s")
+            player.play(pattern, strength: strength)
+            usleep(useconds_t((pattern.estimatedDuration + 1.1) * 1_000_000))
+        }
+    }
+    exit(engine.isAvailable ? 0 : 2)
+}
+
 // Haptic Lab: direct standalone window for on-device calibration (timbre-family assignment + 1→10 curve + raw probe).
 if CommandLine.arguments.contains("--hapticlab") {
     let labApp = NSApplication.shared
@@ -70,9 +90,29 @@ if CommandLine.arguments.contains("--hapticlab") {
     exit(0)
 }
 
-// Logic self-test: headless verification of the timer state machine (skip/postpone/pause/idle/deadline/pomodoro).
+// Logic self-test: headless verification of the timer state machine (skip/postpone/pause/idle/deadline/reminding/rest cycle).
 if CommandLine.arguments.contains("--logictest") {
     exit(runLogicTests())
+}
+
+// Gesture spike: verify the private contact-frame callback works on this machine — and, critically,
+// that *reading* touch data triggers no TCC permission prompt (zero-permission is part of the product
+// identity). Exits 0 on a detected three-finger triple-tap, 1 on timeout, 2 when unsupported.
+if CommandLine.arguments.contains("--gesturetest") {
+    setvbuf(stdout, nil, _IONBF, 0)   // Unbuffered, so diagnostics survive piping / early termination
+    print("gesture supported = \(TouchGestureMonitor.isSupported)")
+    guard TouchGestureMonitor.isSupported else { exit(2) }
+    TouchGestureMonitor.shared.onTripleTap = {
+        print("TRIPLE_TAP_OK")
+        TouchGestureMonitor.shared.stop()
+        exit(0)
+    }
+    TouchGestureMonitor.shared.start()
+    print("listening for 30s — do a three-finger triple-tap on the trackpad…")
+    RunLoop.main.run(until: Date().addingTimeInterval(30))
+    print("timeout: no triple-tap detected")
+    TouchGestureMonitor.shared.stop()
+    exit(1)
 }
 
 // Icon generation: programmatically draw the 1024×1024 primary artwork.

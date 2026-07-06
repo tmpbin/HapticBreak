@@ -22,6 +22,14 @@ final class MultitouchSupport {
     /// Full curve/parameter semantics: see `PrivateHapticEngine.actuateRaw(actuationID:strengthFlags:scale:timeScale:)`.
     typealias ActuatorActuate    = @convention(c) (CFTypeRef, Int32, UInt32, Float32, Float32) -> Int32
     typealias DeviceCreateList   = @convention(c) () -> Unmanaged<CFArray>?
+    /// Contact frame callback: `int cb(MTDeviceRef, MTTouch *touches, int numTouches, double timestamp, int frame)`.
+    /// Only the count and timestamp are consumed by us — the touch struct layout is never relied upon.
+    typealias ContactFrameCallback = @convention(c)
+        (CFTypeRef?, UnsafeMutableRawPointer?, Int32, Double, Int32) -> Int32
+    typealias RegisterContactFrameCallback   = @convention(c) (CFTypeRef, ContactFrameCallback?) -> Void
+    typealias UnregisterContactFrameCallback = @convention(c) (CFTypeRef, ContactFrameCallback?) -> Void
+    typealias DeviceStart = @convention(c) (CFTypeRef, Int32) -> Void
+    typealias DeviceStop  = @convention(c) (CFTypeRef) -> Void
 
     private let handle: UnsafeMutableRawPointer
     let createFromDeviceID: CreateFromDeviceID
@@ -29,6 +37,11 @@ final class MultitouchSupport {
     let actuatorClose: ActuatorClose
     let actuatorActuate: ActuatorActuate
     let deviceCreateList: DeviceCreateList?
+    // Contact-frame bindings (all optional: used for the ack gesture, degrading quietly when absent).
+    let registerContactFrameCallback: RegisterContactFrameCallback?
+    let unregisterContactFrameCallback: UnregisterContactFrameCallback?
+    let deviceStart: DeviceStart?
+    let deviceStop: DeviceStop?
 
     static let shared = MultitouchSupport()
 
@@ -59,5 +72,11 @@ final class MultitouchSupport {
         self.actuatorClose = close
         self.actuatorActuate = actuate
         self.deviceCreateList = sym("MTDeviceCreateList", as: DeviceCreateList.self)
+        self.registerContactFrameCallback =
+            sym("MTRegisterContactFrameCallback", as: RegisterContactFrameCallback.self)
+        self.unregisterContactFrameCallback =
+            sym("MTUnregisterContactFrameCallback", as: UnregisterContactFrameCallback.self)
+        self.deviceStart = sym("MTDeviceStart", as: DeviceStart.self)
+        self.deviceStop  = sym("MTDeviceStop",  as: DeviceStop.self)
     }
 }

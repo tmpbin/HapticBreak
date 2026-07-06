@@ -106,10 +106,15 @@ struct HapticPattern: Codable, Identifiable, Hashable {
     }
 
     // MARK: - Basic (alert prototypes)
+    //
+    // Perceptibility floor (on-device finding): the `soft` timbre rides the faintest actuation, and
+    // design strength ≤3 lands at float0 ≤0.56 — at/below the feeling threshold even at global 10.
+    // Soft-dominated presets therefore keep their strength *contour* but sit on a floor of ≥4,
+    // so every beat is actually deliverable; deliberate decay tails bottom out at 2, not 1.
 
     static let gentle = HapticPattern(
         id: "builtin.gentle", name: "Gentle", symbol: "hand.tap",
-        steps: [s(.soft, 3, 0.4, 0)], isBuiltin: true)
+        steps: [s(.soft, 10, 0.4, 0)], isBuiltin: true)
 
     static let double = HapticPattern(
         id: "builtin.double", name: "Double Tap", symbol: "hand.tap.fill",
@@ -119,19 +124,19 @@ struct HapticPattern: Codable, Identifiable, Hashable {
         id: "builtin.triple", name: "Triple Tap", symbol: "ellipsis",
         steps: [s(.crisp, 6, 0.3, 140), s(.crisp, 6, 0.3, 140), s(.crisp, 6, 0.3, 0)], isBuiltin: true)
 
-    static let ramp = HapticPattern(
+    static let ramp = HapticPattern(   // 10 beats, silence → full: a gradual "coming back" swell
         id: "builtin.ramp", name: "Ramp Up", symbol: "chart.line.uptrend.xyaxis",
-        steps: [s(.crisp, 2, 0.3, 110), s(.crisp, 4, 0.3, 110), s(.crisp, 6, 0.3, 110),
-                s(.crisp, 8, 0.3, 110), s(.crisp, 10, 0.3, 0)], isBuiltin: true)
+        steps: [s(.crisp, 1, 0.3, 110), s(.crisp, 2, 0.3, 110), s(.crisp, 3, 0.3, 110),
+                s(.crisp, 4, 0.3, 110), s(.crisp, 5, 0.3, 110), s(.crisp, 6, 0.3, 110),
+                s(.crisp, 7, 0.3, 110), s(.crisp, 8, 0.3, 110), s(.crisp, 9, 0.3, 110),
+                s(.crisp, 10, 0.3, 0)], isBuiltin: true)
 
-    static let fade = HapticPattern(
+    static let fade = HapticPattern(   // 10 beats, full → silence: the mirror of Ramp Up
         id: "builtin.fade", name: "Fade Out", symbol: "chart.line.downtrend.xyaxis",
-        steps: [s(.crisp, 9, 0.4, 130), s(.crisp, 7, 0.4, 130),
-                s(.crisp, 5, 0.4, 130), s(.crisp, 3, 0.4, 0)], isBuiltin: true)
-
-    static let heavy = HapticPattern(
-        id: "builtin.heavy", name: "Heavy", symbol: "hammer.fill",
-        steps: [s(.buzz, 10, 0.6, 160), s(.crisp, 10, 0.4, 0)], isBuiltin: true)
+        steps: [s(.crisp, 10, 0.4, 120), s(.crisp, 9, 0.4, 120), s(.crisp, 8, 0.4, 120),
+                s(.crisp, 7, 0.4, 120), s(.crisp, 6, 0.4, 120), s(.crisp, 5, 0.4, 120),
+                s(.crisp, 4, 0.4, 120), s(.crisp, 3, 0.4, 120), s(.crisp, 2, 0.4, 120),
+                s(.crisp, 1, 0.4, 0)], isBuiltin: true)
 
     static let urgent = HapticPattern(
         id: "builtin.urgent", name: "Urgent", symbol: "exclamationmark.triangle.fill",
@@ -151,69 +156,29 @@ struct HapticPattern: Codable, Identifiable, Hashable {
         steps: [s(.buzz, 7, 0.8, 140), s(.buzz, 4, 0.8, 560),
                 s(.buzz, 7, 0.8, 140), s(.buzz, 4, 0.8, 0)], isBuiltin: true)
 
-    static let breathe = HapticPattern(
-        id: "builtin.breathe", name: "Breathe", symbol: "wind",
-        steps: [s(.soft, 2, 0.6, 500), s(.soft, 4, 0.6, 500), s(.soft, 2, 0.6, 0)], isBuiltin: true)
-
     static let ripple = HapticPattern(
         id: "builtin.ripple", name: "Ripple", symbol: "drop.fill",
-        steps: [s(.soft, 5, 0.2, 70), s(.soft, 3, 0.2, 70),
-                s(.soft, 2, 0.2, 70), s(.soft, 1, 0.2, 0)], isBuiltin: true)
-
-    static let raindrops = HapticPattern(
-        id: "builtin.raindrops", name: "Raindrops", symbol: "cloud.rain.fill",
-        steps: [s(.soft, 4, 0.3, 170), s(.soft, 2, 0.3, 300), s(.soft, 5, 0.3, 130),
-                s(.soft, 3, 0.3, 240), s(.soft, 2, 0.3, 0)], isBuiltin: true)
-
-    static let waves = HapticPattern(
-        id: "builtin.waves", name: "Waves", symbol: "water.waves",
-        steps: [s(.soft, 2, 0.7, 260), s(.soft, 4, 0.7, 260), s(.soft, 6, 0.7, 260),
-                s(.soft, 4, 0.7, 260), s(.soft, 2, 0.7, 0)], isBuiltin: true)
-
-    static let thunder = HapticPattern(
-        id: "builtin.thunder", name: "Thunder", symbol: "cloud.bolt.fill",
-        steps: [s(.buzz, 10, 0.9, 70), s(.buzz, 8, 0.95, 420), s(.buzz, 5, 1.0, 0)], isBuiltin: true)
+        steps: [s(.soft, 6, 0.2, 70), s(.soft, 4, 0.2, 70),
+                s(.soft, 3, 0.2, 70), s(.soft, 2, 0.2, 0)], isBuiltin: true)
 
     static let dripping = HapticPattern(
         id: "builtin.dripping", name: "Dripping", symbol: "drop",
-        steps: [s(.soft, 5, 0.2, 650), s(.soft, 5, 0.2, 650), s(.soft, 5, 0.2, 0)], isBuiltin: true)
-
-    static let crackle = HapticPattern(
-        id: "builtin.crackle", name: "Campfire", symbol: "flame.fill",
-        steps: [s(.crisp, 6, 0.1, 90), s(.crisp, 3, 0.15, 220), s(.crisp, 7, 0.1, 70),
-                s(.crisp, 4, 0.1, 280), s(.crisp, 6, 0.1, 0)], isBuiltin: true)
+        steps: [s(.soft, 6, 0.2, 650), s(.soft, 6, 0.2, 650), s(.soft, 6, 0.2, 0)], isBuiltin: true)
 
     static let flutter = HapticPattern(
         id: "builtin.flutter", name: "Flutter", symbol: "leaf.fill",
-        steps: [s(.soft, 2, 0.4, 70), s(.soft, 2, 0.4, 70), s(.soft, 2, 0.4, 70),
-                s(.soft, 2, 0.4, 70), s(.soft, 2, 0.4, 0)], isBuiltin: true)
-
-    static let tremor = HapticPattern(
-        id: "builtin.tremor", name: "Tremor", symbol: "waveform.path.ecg",
-        steps: [s(.buzz, 4, 1.0, 90), s(.buzz, 4, 1.0, 90), s(.buzz, 4, 1.0, 90),
-                s(.buzz, 4, 1.0, 90), s(.buzz, 4, 1.0, 90), s(.buzz, 4, 1.0, 0)], isBuiltin: true)
+        steps: [s(.soft, 10, 0.4, 85), s(.soft, 10, 0.4, 85), s(.soft, 10, 0.4, 85),
+                s(.soft, 10, 0.4, 85), s(.soft, 10, 0.4, 0)], isBuiltin: true)
 
     static let woodpecker = HapticPattern(
         id: "builtin.woodpecker", name: "Woodpecker", symbol: "bird.fill",
-        steps: [s(.crisp, 5, 0.1, 55), s(.crisp, 5, 0.1, 55), s(.crisp, 5, 0.1, 55),
-                s(.crisp, 5, 0.1, 55), s(.crisp, 5, 0.1, 0)], isBuiltin: true)
+        steps: [s(.crisp, 6, 0.1, 70), s(.crisp, 6, 0.1, 70), s(.crisp, 6, 0.1, 70),
+                s(.crisp, 6, 0.1, 70), s(.crisp, 6, 0.1, 0)], isBuiltin: true)
 
     // MARK: - Rhythm (musical grooves; each spans ≥ 2 full bars). Feel rules learned on-device:
     // taps closer than ~120 ms blur into one buzz, so inter-onset gaps stay above that; meter is carried by
     // ACCENT CONTRAST — low `buzz` = kick / downbeat, bright `crisp` = clap / accent, gentle `soft` = weak
     // offbeat — not by strength alone. Gaps are real inter-onset intervals at a singable tempo.
-
-    static let waltz = HapticPattern(   // 3/4 · ~110 BPM: OOM-pah-pah, twice (low downbeat + two soft lifts)
-        id: "builtin.waltz", name: "Waltz", symbol: "music.note",
-        steps: [s(.buzz, 8, 0.5, 300), s(.soft, 3, 0.4, 300), s(.soft, 3, 0.4, 340),
-                s(.buzz, 8, 0.5, 300), s(.soft, 3, 0.4, 300), s(.soft, 3, 0.4, 0)], isBuiltin: true)
-
-    static let march = HapticPattern(   // 4/4 · brisk cadence: LEFT (heavy) - right (light) ×4
-        id: "builtin.march", name: "March", symbol: "figure.walk",
-        steps: [s(.buzz, 8, 0.4, 300), s(.soft, 4, 0.3, 300),
-                s(.buzz, 8, 0.4, 300), s(.soft, 4, 0.3, 300),
-                s(.buzz, 8, 0.4, 300), s(.soft, 4, 0.3, 300),
-                s(.buzz, 8, 0.4, 300), s(.soft, 4, 0.3, 0)], isBuiltin: true)
 
     static let boomclap = HapticPattern(   // 4/4 four-on-the-floor · ~135 BPM: kick-CLAP alternating (2 bars)
         id: "builtin.boomclap", name: "Boom Clap", symbol: "metronome.fill",
@@ -222,22 +187,21 @@ struct HapticPattern: Codable, Identifiable, Hashable {
                 s(.buzz, 9, 0.7, 440), s(.crisp, 8, 0.15, 440),
                 s(.buzz, 9, 0.7, 440), s(.crisp, 8, 0.15, 0)], isBuiltin: true)
 
-    static let clave = HapticPattern(   // Son clave (3-2) — the two-bar Afro-Cuban key pattern (eighth ≈ 160 ms)
-        id: "builtin.clave", name: "Clave", symbol: "music.quarternote.3",
-        steps: [s(.crisp, 8, 0.25, 480), s(.crisp, 6, 0.25, 480), s(.crisp, 8, 0.25, 640),
-                s(.crisp, 6, 0.25, 320), s(.crisp, 8, 0.25, 0)], isBuiltin: true)
-
-    static let accelerando = HapticPattern(   // Two bars: tempo ramps up (gaps shrink) across eight beats
+    static let accelerando = HapticPattern(   // A dropped ball: bounces get faster and softer until they
+        // blur into a settle — gaps shrink geometrically (~×0.8), strength decays with the energy.
         id: "builtin.accelerando", name: "Accelerando", symbol: "forward.fill",
-        steps: [s(.crisp, 5, 0.3, 340), s(.crisp, 5, 0.3, 280), s(.crisp, 5, 0.3, 230),
-                s(.crisp, 6, 0.3, 190), s(.crisp, 6, 0.3, 160), s(.crisp, 7, 0.3, 135),
-                s(.crisp, 8, 0.3, 120), s(.crisp, 9, 0.3, 0)], isBuiltin: true)
+        steps: [s(.crisp, 10, 0.4, 500), s(.crisp, 9, 0.4, 400), s(.crisp, 8, 0.4, 320),
+                s(.crisp, 7, 0.35, 255), s(.crisp, 6, 0.35, 205), s(.crisp, 6, 0.3, 165),
+                s(.crisp, 5, 0.3, 130), s(.crisp, 5, 0.3, 105), s(.crisp, 4, 0.3, 85),
+                s(.crisp, 4, 0.3, 70), s(.crisp, 4, 0.3, 60), s(.crisp, 4, 0.3, 0)], isBuiltin: true)
 
-    static let ritardando = HapticPattern(   // Two bars: tempo winds down (gaps grow) across eight beats
+    static let ritardando = HapticPattern(   // The drop played backwards: a rattle gathers energy,
+        // spacing out and hardening until the final full-strength blow.
         id: "builtin.ritardando", name: "Ritardando", symbol: "backward.fill",
-        steps: [s(.crisp, 9, 0.3, 120), s(.crisp, 8, 0.3, 135), s(.crisp, 7, 0.3, 160),
-                s(.crisp, 6, 0.3, 190), s(.crisp, 6, 0.3, 230), s(.crisp, 5, 0.3, 280),
-                s(.crisp, 5, 0.3, 340), s(.crisp, 5, 0.3, 0)], isBuiltin: true)
+        steps: [s(.crisp, 4, 0.3, 60), s(.crisp, 4, 0.3, 70), s(.crisp, 4, 0.3, 85),
+                s(.crisp, 5, 0.3, 105), s(.crisp, 5, 0.3, 130), s(.crisp, 6, 0.3, 165),
+                s(.crisp, 6, 0.35, 205), s(.crisp, 7, 0.35, 255), s(.crisp, 8, 0.4, 320),
+                s(.crisp, 9, 0.4, 400), s(.crisp, 10, 0.4, 500), s(.crisp, 10, 0.5, 0)], isBuiltin: true)
 
     static let triplet = HapticPattern(   // Two bars: four accented triplet groups — ONE-two-three ×4
         id: "builtin.triplet", name: "Triplet", symbol: "music.note.list",
@@ -248,8 +212,8 @@ struct HapticPattern: Codable, Identifiable, Hashable {
 
     static let echo = HapticPattern(   // Call + fading echoes, twice (two phrases)
         id: "builtin.echo", name: "Echo", symbol: "speaker.wave.3.fill",
-        steps: [s(.crisp, 9, 0.3, 180), s(.crisp, 6, 0.35, 230), s(.soft, 3, 0.4, 280), s(.soft, 1, 0.45, 480),
-                s(.crisp, 9, 0.3, 180), s(.crisp, 6, 0.35, 230), s(.soft, 3, 0.4, 280), s(.soft, 1, 0.45, 0)], isBuiltin: true)
+        steps: [s(.crisp, 9, 0.3, 180), s(.crisp, 6, 0.35, 230), s(.soft, 4, 0.4, 280), s(.soft, 2, 0.45, 480),
+                s(.crisp, 9, 0.3, 180), s(.crisp, 6, 0.35, 230), s(.soft, 4, 0.4, 280), s(.soft, 2, 0.45, 0)], isBuiltin: true)
 
     static let pulse = HapticPattern(   // Two bars · ~115 BPM: strong driving throb, accent every downbeat (ONE-two ×4)
         id: "builtin.pulse", name: "Pulse", symbol: "waveform.path",
@@ -260,13 +224,6 @@ struct HapticPattern: Codable, Identifiable, Hashable {
         id: "builtin.countdown", name: "Countdown", symbol: "timer",
         steps: [s(.soft, 4, 0.3, 450), s(.soft, 4, 0.3, 450), s(.soft, 4, 0.3, 450), s(.buzz, 9, 0.4, 620),
                 s(.soft, 4, 0.3, 450), s(.soft, 4, 0.3, 450), s(.soft, 4, 0.3, 450), s(.buzz, 9, 0.4, 0)], isBuiltin: true)
-
-    static let swing = HapticPattern(   // Two bars · shuffle: long-short swung eighths (2:1) ×4
-        id: "builtin.swing", name: "Swing", symbol: "metronome",
-        steps: [s(.crisp, 7, 0.3, 320), s(.soft, 5, 0.35, 170),
-                s(.crisp, 7, 0.3, 320), s(.soft, 5, 0.35, 170),
-                s(.crisp, 7, 0.3, 320), s(.soft, 5, 0.35, 170),
-                s(.crisp, 7, 0.3, 320), s(.soft, 5, 0.35, 0)], isBuiltin: true)
 
     static let gallop = HapticPattern(   // Two bars · horse gallop: ti-ti-DUM (two soft + accented) ×3
         id: "builtin.gallop", name: "Gallop", symbol: "hare.fill",
@@ -298,26 +255,64 @@ struct HapticPattern: Codable, Identifiable, Hashable {
                 s(.buzz, 9, 0.5, 360), s(.soft, 5, 0.3, 130), s(.buzz, 9, 0.5, 420),
                 s(.buzz, 9, 0.5, 360), s(.soft, 5, 0.3, 130), s(.buzz, 9, 0.5, 0)], isBuiltin: true)
 
+    static let jingle = HapticPattern(   // "Jingle Bells" chorus: ti-ti-TA ×2, then ti-ti-ti-ti WAY (eighth ≈ 200 ms)
+        id: "builtin.jingle", name: "Jingle Bells", symbol: "bell.fill",
+        steps: [s(.crisp, 6, 0.3, 200), s(.crisp, 6, 0.3, 200), s(.crisp, 9, 0.3, 400),
+                s(.crisp, 6, 0.3, 200), s(.crisp, 6, 0.3, 200), s(.crisp, 9, 0.3, 400),
+                s(.crisp, 6, 0.3, 200), s(.crisp, 6, 0.3, 200), s(.crisp, 7, 0.3, 200),
+                s(.crisp, 6, 0.3, 200), s(.buzz, 10, 0.5, 0)], isBuiltin: true)
+
+    static let birthday = HapticPattern(   // "Happy Birthday": hap-py pickup + BIRTH-day-to-YOU, two phrases (quarter ≈ 450 ms)
+        id: "builtin.birthday", name: "Happy Birthday", symbol: "gift.fill",
+        steps: [s(.soft, 5, 0.3, 320), s(.soft, 5, 0.3, 130), s(.buzz, 9, 0.5, 450),
+                s(.crisp, 7, 0.3, 450), s(.crisp, 7, 0.3, 450), s(.buzz, 10, 0.5, 700),
+                s(.soft, 5, 0.3, 320), s(.soft, 5, 0.3, 130), s(.buzz, 9, 0.5, 450),
+                s(.crisp, 7, 0.3, 450), s(.crisp, 7, 0.3, 450), s(.buzz, 10, 0.5, 0)], isBuiltin: true)
+
+    static let frere = HapticPattern(   // "Frère Jacques" / 两只老虎: four even quarters ×2, then ti-ti-TAA ×2 (quarter ≈ 320 ms)
+        id: "builtin.frere", name: "Frère Jacques", symbol: "pawprint.fill",
+        steps: [s(.crisp, 8, 0.3, 320), s(.crisp, 6, 0.3, 320), s(.crisp, 6, 0.3, 320), s(.crisp, 6, 0.3, 320),
+                s(.crisp, 8, 0.3, 320), s(.crisp, 6, 0.3, 320), s(.crisp, 6, 0.3, 320), s(.crisp, 6, 0.3, 320),
+                s(.crisp, 7, 0.3, 320), s(.crisp, 7, 0.3, 320), s(.buzz, 9, 0.5, 640),
+                s(.crisp, 7, 0.3, 320), s(.crisp, 7, 0.3, 320), s(.buzz, 9, 0.5, 0)], isBuiltin: true)
+
+    static let chime = HapticPattern(   // Westminster Quarters — the school-bell chime: four slow bell strokes ×2
+        id: "builtin.chime", name: "Westminster", symbol: "graduationcap.fill",
+        steps: [s(.buzz, 8, 0.8, 550), s(.buzz, 8, 0.8, 550), s(.buzz, 8, 0.8, 550), s(.buzz, 10, 0.9, 1000),
+                s(.buzz, 8, 0.8, 550), s(.buzz, 8, 0.8, 550), s(.buzz, 8, 0.8, 550), s(.buzz, 10, 0.9, 0)], isBuiltin: true)
+
+    static let mission = HapticPattern(   // Spy-theme 5/4 ostinato: DUM… DUM… ba-da, twice
+        id: "builtin.mission", name: "Secret Mission", symbol: "figure.run",
+        steps: [s(.buzz, 9, 0.6, 700), s(.buzz, 9, 0.6, 700), s(.crisp, 7, 0.25, 180), s(.crisp, 7, 0.25, 420),
+                s(.buzz, 9, 0.6, 700), s(.buzz, 9, 0.6, 700), s(.crisp, 7, 0.25, 180), s(.crisp, 7, 0.25, 0)], isBuiltin: true)
+
+    // MARK: - Internal (not user-selectable): fixed short cue for the reminding-phase re-nudge —
+    // deliberately brief so unacknowledged reminders supervise without interrupting.
+
+    static let renudge = HapticPattern(
+        id: "internal.renudge", name: "Re-nudge", symbol: "hand.tap",
+        steps: [s(.crisp, 7, 0.3, 0)], isBuiltin: true)
+
     // MARK: - Aggregation / categorization
 
     static let natureIDs: Set<String> = [
-        heartbeat.id, breathe.id, ripple.id, raindrops.id, waves.id, thunder.id,
-        dripping.id, crackle.id, flutter.id, tremor.id, woodpecker.id]
+        heartbeat.id, ripple.id, dripping.id, flutter.id, woodpecker.id]
 
     static let rhythmIDs: Set<String> = [
-        waltz.id, march.id, boomclap.id, clave.id, accelerando.id, ritardando.id,
-        triplet.id, echo.id, pulse.id, countdown.id, swing.id, gallop.id,
-        fate.id, stomp.id, haircut.id, darkMarch.id]
+        boomclap.id, accelerando.id, ritardando.id,
+        triplet.id, echo.id, pulse.id, countdown.id, gallop.id,
+        fate.id, stomp.id, haircut.id, darkMarch.id,
+        jingle.id, birthday.id, frere.id, chime.id, mission.id]
 
     static let builtins: [HapticPattern] = [
         // Basic
-        gentle, double, triple, ramp, fade, heavy, urgent, sos,
+        gentle, double, triple, ramp, fade, urgent, sos,
         // Nature
-        heartbeat, breathe, ripple, raindrops, waves, thunder, dripping, crackle, flutter, tremor, woodpecker,
+        heartbeat, ripple, dripping, flutter, woodpecker,
         // Rhythm
-        waltz, march, boomclap, clave, accelerando, ritardando, triplet, echo, pulse, countdown, swing, gallop,
+        boomclap, accelerando, ritardando, triplet, echo, pulse, countdown, gallop,
         // Iconic motifs
-        fate, stomp, haircut, darkMarch,
+        fate, stomp, haircut, darkMarch, jingle, birthday, frere, chime, mission,
     ]
 
     static func builtins(in category: HapticPatternCategory) -> [HapticPattern] {

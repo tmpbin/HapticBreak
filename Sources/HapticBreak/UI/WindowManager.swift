@@ -16,6 +16,7 @@ final class WindowManager {
     private var statsWindow: NSWindow?
     private var editorWindow: NSWindow?
     private var hapticLabWindow: NSWindow?
+    private var aboutWindow: NSWindow?
     private var languageObserver: NSObjectProtocol?
 
     init(viewModel: AppViewModel) {
@@ -37,12 +38,14 @@ final class WindowManager {
         statsWindow?.title = L.t("window.stats")
         editorWindow?.title = L.t("editor.title")
         hapticLabWindow?.title = L.t("window.hapticLab")
+        aboutWindow?.title = L.t("window.about")
     }
 
     func showSettings() {
         settingsWindow = present(settingsWindow,
                                  title: L.t("window.settings"),
-                                 size: NSSize(width: 460, height: 600)) {
+                                 size: NSSize(width: 460, height: 600),
+                                 minSize: NSSize(width: 460, height: 520)) {
             SettingsView(viewModel: viewModel)
         }
     }
@@ -50,7 +53,8 @@ final class WindowManager {
     func showStatistics() {
         statsWindow = present(statsWindow,
                               title: L.t("window.stats"),
-                              size: NSSize(width: 520, height: 560)) {
+                              size: NSSize(width: 520, height: 560),
+                              minSize: NSSize(width: 480, height: 480)) {
             StatisticsView()
         }
         NotificationCenter.default.post(name: .hbStatsWindowShown, object: nil)
@@ -59,7 +63,8 @@ final class WindowManager {
     func showPatternEditor() {
         editorWindow = present(editorWindow,
                                title: L.t("editor.title"),
-                               size: NSSize(width: 560, height: 560)) {
+                               size: NSSize(width: 560, height: 560),
+                               minSize: NSSize(width: 520, height: 480)) {
             PatternEditorView(viewModel: viewModel)
         }
     }
@@ -67,35 +72,26 @@ final class WindowManager {
     func showHapticLab() {
         hapticLabWindow = present(hapticLabWindow,
                                   title: L.t("window.hapticLab"),
-                                  size: NSSize(width: 480, height: 640)) {
+                                  size: NSSize(width: 480, height: 640),
+                                  minSize: NSSize(width: 460, height: 560)) {
             HapticLabView()
         }
     }
 
-    /// Show the native macOS About panel (app icon / name / version + tagline credits).
-    /// Version is read from the packaged `CFBundleShortVersionString`, falling back for dev runs.
+    /// Custom About window: app identity plus the haptic backend diagnostics (moved out of Settings —
+    /// they're debug information, not everyday decisions) and the hidden Haptic Lab entry.
     func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        let credits = NSAttributedString(
-            string: L.t("settings.about"),
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 11),
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: paragraph,
-            ])
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-        NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "HapticBreak",
-            .applicationVersion: version,
-            .credits: credits,
-        ])
+        aboutWindow = present(aboutWindow,
+                              title: L.t("window.about"),
+                              size: NSSize(width: 400, height: 460)) {
+            AboutView(viewModel: viewModel)
+        }
     }
 
     private func present<Content: View>(_ existing: NSWindow?,
                                         title: String,
                                         size: NSSize,
+                                        minSize: NSSize? = nil,
                                         content: () -> Content) -> NSWindow {
         if let existing = existing {
             NSApp.activate(ignoringOtherApps: true)
@@ -115,6 +111,10 @@ final class WindowManager {
         window.title = title
         window.contentViewController = hosting
         window.isReleasedWhenClosed = false
+        // SwiftUI `.frame(minWidth:minHeight:)` can't constrain a manually managed NSWindow (with
+        // sizingOptions cleared, nothing feeds the min back to AppKit) — enforce it here so the user
+        // can't shrink the window until controls clip or overlap.
+        window.contentMinSize = minSize ?? size
         window.setContentSize(size)          // Override any initial size from hosting, keeping it consistent with center()
         window.center()
         NSApp.activate(ignoringOtherApps: true)

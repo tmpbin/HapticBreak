@@ -1,1 +1,1 @@
-https://OWNER.github.io/HapticBreak/appcast.xml
+https://tmpbin.github.io/HapticBreak/appcast.xml

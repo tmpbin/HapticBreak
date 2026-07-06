@@ -5,10 +5,19 @@ import Foundation
 
 private final class CountingDelegate: BreakTimerDelegate {
     var fires = 0
+    var pulses = 0
+    var autoPostpones = 0
+    var acks = 0
+    var lastAckMethod: AckMethod?
     var rests = 0
     var changes = 0
     var willSoon = 0
     func breakTimerDidFire(_ timer: BreakTimer) { fires += 1 }
+    func breakTimerPulse(_ timer: BreakTimer) { pulses += 1 }
+    func breakTimerDidAutoPostpone(_ timer: BreakTimer) { autoPostpones += 1 }
+    func breakTimerDidAcknowledge(_ timer: BreakTimer, method: AckMethod) {
+        acks += 1; lastAckMethod = method
+    }
     func breakTimerDidFinishRest(_ timer: BreakTimer) { rests += 1 }
     func breakTimerWillFireSoon(_ timer: BreakTimer) { willSoon += 1 }
     func breakTimerStateChanged(_ timer: BreakTimer) { changes += 1 }
@@ -30,15 +39,21 @@ func runLogicTests() -> Int32 {
     // Drive with purely in-memory preferences; never touch the user's real preferences and never write any file.
     let s = Settings(defaults: InMemoryKeyValueStore())
 
-    // Config: 1-minute interval, idle and pomodoro off, for precise driving.
-    s.pomodoroEnabled = false
+    // Config: 1-minute interval, no rest segment, idle off, for precise driving.
     s.breakIntervalMinutes = 1
+    s.restMinutes = 0
     s.idleEnabled = false
     s.idleResetMinutes = 0
     // Turn off "respectful reminders" for deterministic core checks (their behavior is tested separately).
     s.typingAwareDefer = false
     s.gentleHeadsUp = false
-    s.skipEscalation = false
+    // Reminding phase parameters: nudge every 10s, at most 2 nudges, then auto-postpone 5 min.
+    s.remindPulseSeconds = 10
+    s.remindPulseMax = 2
+    s.postponeMinutes = 5
+
+    // Idle 5s everywhere below: enough of a "typing pause" not to defer, well below the 30s step-away ack.
+    let activeIdle = 5.0
 
     let delegate = CountingDelegate()
     let timer = BreakTimer(settings: s)
@@ -47,66 +62,130 @@ func runLogicTests() -> Int32 {
     check(timer.total == 60, "initial total = 60s (1 minute)")
     check(timer.remaining == 60, "initial remaining = 60s")
 
-    for _ in 0..<59 { _ = timer.tick(idleSeconds: 0, externalSuppress: nil) }
+    for _ in 0..<59 { _ = timer.tick(idleSeconds: activeIdle, externalSuppress: nil) }
     check(timer.remaining == 1, "after 59 ticks remaining = 1")
 
-    _ = timer.tick(idleSeconds: 0, externalSuppress: nil)
+    _ = timer.tick(idleSeconds: activeIdle, externalSuppress: nil)
     check(delegate.fires == 1, "fires the reminder once at the deadline")
-    check(timer.remaining == 60, "auto-resets to the full interval after the deadline")
+    check(timer.phase == .reminding, "deadline → enters the reminding phase (awaiting acknowledgment)")
+
+    // Acknowledge (panel) with no rest segment → back to a fresh work countdown
+    timer.acknowledge(.panel)
+    check(delegate.acks == 1 && delegate.lastAckMethod == .panel, "explicit acknowledgment is delivered with its method")
+    check(timer.phase == .working && timer.remaining == 60, "ack with restMinutes=0 → fresh work countdown")
+
+    // Reminding pulses: initial fire counts as nudge 1; nudge 2 at +10s; cap(2) → auto-postpone at +20s
+    for _ in 0..<60 { _ = timer.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(timer.phase == .reminding && delegate.fires == 2, "second cycle fires and reminds again")
+    for _ in 0..<10 { _ = timer.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(delegate.pulses == 1, "one gentle follow-up nudge after the pulse interval")
+    for _ in 0..<10 { _ = timer.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(delegate.autoPostpones == 1, "nudge cap reached → silently auto-postponed")
+    check(timer.phase == .working && timer.remaining == min(5 * 60, timer.total),
+          "auto-postpone → working with postponeMinutes on the clock (capped at one interval)")
+
+    // Implicit acknowledgment: actually stepping away (idle ≥ 30s) during reminding
+    timer.restartWorking()
+    for _ in 0..<60 { _ = timer.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(timer.phase == .reminding, "third cycle reminds")
+    _ = timer.tick(idleSeconds: 35, externalSuppress: nil)
+    check(delegate.lastAckMethod == .stepAway, "stepping away (idle ≥ 30s) acknowledges implicitly")
+    check(timer.phase == .working, "step-away ack with restMinutes=0 → back to work countdown")
+
+    // Typing-aware nudge deferral: a nudge never lands mid-typing; it waits for a natural pause
+    s.typingAwareDefer = true
+    let dPulse = CountingDelegate()
+    let tPulse = BreakTimer(settings: s)
+    tPulse.delegate = dPulse
+    for _ in 0..<60 { _ = tPulse.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(tPulse.phase == .reminding && dPulse.fires == 1, "reminding begins (typing-aware active)")
+    for _ in 0..<15 { _ = tPulse.tick(idleSeconds: 0, externalSuppress: nil) }   // keep typing past the interval
+    check(dPulse.pulses == 0, "nudge deferred while typing")
+    _ = tPulse.tick(idleSeconds: 2.0, externalSuppress: nil)                     // natural pause
+    check(dPulse.pulses == 1, "nudge lands right after a typing pause")
+    s.typingAwareDefer = false
 
     // Skip
-    for _ in 0..<10 { _ = timer.tick(idleSeconds: 0, externalSuppress: nil) }
-    timer.skip()
-    check(timer.remaining == 60, "remaining resets to 60 after skip")
+    let d0 = CountingDelegate()
+    let t0m = BreakTimer(settings: s)
+    t0m.delegate = d0
+    for _ in 0..<10 { _ = t0m.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    t0m.skip()
+    check(t0m.remaining == 60, "remaining resets to 60 after skip")
 
-    // Postpone (capped at total*2)
-    timer.postpone(minutes: 5)
-    check(timer.remaining == 120, "postponing 5 minutes is capped at 120s under a 1-minute interval")
+    // Postpone from working (capped at total*2)
+    t0m.postpone(minutes: 5)
+    check(t0m.remaining == 120, "postponing 5 minutes is capped at 120s under a 1-minute interval")
+
+    // Postpone from reminding = "not now, remind me in N minutes"
+    for _ in 0..<120 { _ = t0m.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(t0m.phase == .reminding, "cycle expires into reminding")
+    t0m.postpone(minutes: 5)
+    check(t0m.phase == .working && t0m.remaining == 60, "postpone during reminding → working, capped at one interval")
 
     // Manual pause holds
-    timer.toggleManualPause()
-    let beforePause = timer.remaining
-    _ = timer.tick(idleSeconds: 0, externalSuppress: nil)
-    check(timer.isPaused && timer.pauseReason == .manual, "state is manual after manual pause")
-    check(timer.remaining == beforePause, "does not decrement while manually paused")
-    timer.toggleManualPause()
-    check(!timer.isPaused, "no longer paused after resume")
+    let tp = BreakTimer(settings: s)
+    tp.toggleManualPause()
+    let beforePause = tp.remaining
+    _ = tp.tick(idleSeconds: activeIdle, externalSuppress: nil)
+    check(tp.isPaused && tp.pauseReason == .manual, "state is manual after manual pause")
+    check(tp.remaining == beforePause, "does not decrement while manually paused")
+    tp.toggleManualPause()
+    check(!tp.isPaused, "no longer paused after resume")
 
     // Idle pause
     s.idleEnabled = true
     s.idlePauseSeconds = 60
-    let beforeIdle = timer.remaining
-    _ = timer.tick(idleSeconds: 120, externalSuppress: nil)
-    check(timer.pauseReason == .idle, "idle over threshold → idle pause")
-    check(timer.remaining == beforeIdle, "does not decrement while idle-paused")
+    let beforeIdle = tp.remaining
+    _ = tp.tick(idleSeconds: 120, externalSuppress: nil)
+    check(tp.pauseReason == .idle, "idle over threshold → idle pause")
+    check(tp.remaining == beforeIdle, "does not decrement while idle-paused")
 
     // External suppression (fullscreen)
-    _ = timer.tick(idleSeconds: 0, externalSuppress: .fullscreen)
-    check(timer.pauseReason == .fullscreen, "external suppression → fullscreen pause")
+    _ = tp.tick(idleSeconds: 0, externalSuppress: .fullscreen)
+    check(tp.pauseReason == .fullscreen, "external suppression → fullscreen pause")
 
-    // Pomodoro cycle
+    // Quiet-scene suppression behaves like other external suppressors and lifts cleanly
+    _ = tp.tick(idleSeconds: 0, externalSuppress: .scene)
+    check(tp.pauseReason == .scene, "quiet scene → scene pause")
+    _ = tp.tick(idleSeconds: 0, externalSuppress: nil)
+    check(tp.pauseReason == PauseReason.none, "scene expiry → resumes on its own")
+
+    // Focus scene: one temporary long work segment, then back to the configured rhythm
     s.idleEnabled = false
-    s.pomodoroEnabled = true
-    s.pomodoroWorkMinutes = 1
-    s.pomodoroBreakMinutes = 1
-    timer.resetCycle()
-    check(timer.phase == .working && timer.total == 60, "pomodoro: starts in the work segment, 60s")
-    delegate.fires = 0; delegate.rests = 0
-    for _ in 0..<60 { _ = timer.tick(idleSeconds: 0, externalSuppress: nil) }
-    check(delegate.fires == 1 && timer.phase == .resting, "work segment ends → enters rest segment")
-    check(timer.total == 60, "rest segment lasts 60s")
-    for _ in 0..<60 { _ = timer.tick(idleSeconds: 0, externalSuppress: nil) }
-    check(delegate.rests == 1 && timer.phase == .working, "rest segment ends → back to work segment")
+    let df = CountingDelegate()
+    let tf = BreakTimer(settings: s)
+    tf.delegate = df
+    tf.startTemporaryWork(seconds: 120)
+    check(tf.total == 120 && tf.remaining == 120, "focus scene: current cycle uses the temporary length")
+    for _ in 0..<120 { _ = tf.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(df.fires == 1 && tf.phase == .reminding, "focus scene: still expires into a normal reminder")
+    tf.acknowledge(.panel)
+    check(tf.total == 60, "focus scene: next cycle returns to the configured interval")
+    s.idleEnabled = true
+
+    // Work/rest cycle (unified model): ack enters a timed rest, rest expiry returns to work
+    s.idleEnabled = false
+    s.restMinutes = 1
+    let dc = CountingDelegate()
+    let tc = BreakTimer(settings: s)
+    tc.delegate = dc
+    check(tc.phase == .working && tc.total == 60, "cycle: starts in the work segment, 60s")
+    for _ in 0..<60 { _ = tc.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dc.fires == 1 && tc.phase == .reminding, "cycle: work segment ends → reminding")
+    tc.acknowledge(.hotkey)
+    check(tc.phase == .resting && tc.total == 60, "cycle: ack with restMinutes=1 → 60s rest segment")
+    for _ in 0..<60 { _ = tc.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dc.rests == 1 && tc.phase == .working, "cycle: rest segment ends → back to work segment")
+    s.restMinutes = 0
 
     // CR-02 heads-up tap: exactly once per cycle, and doesn't affect the real reminder
-    s.pomodoroEnabled = false
-    s.breakIntervalMinutes = 1
     s.gentleHeadsUp = true
     s.typingAwareDefer = false
     let d2 = CountingDelegate()
     let t2 = BreakTimer(settings: s)
     t2.delegate = d2
-    for _ in 0..<60 { _ = t2.tick(idleSeconds: 0, externalSuppress: nil) }
+    for _ in 0..<60 { _ = t2.tick(idleSeconds: activeIdle, externalSuppress: nil) }
     check(d2.willSoon == 1, "CR-02: exactly one heads-up tap per cycle")
     check(d2.fires == 1, "CR-02: reminder still fires normally after the heads-up")
     s.gentleHeadsUp = false
@@ -129,18 +208,6 @@ func runLogicTests() -> Int32 {
     for _ in 0..<110 { _ = t4.tick(idleSeconds: 0, externalSuppress: nil) }
     check(d4.fires >= 1, "CR-01: fires after the 45s defer cap even while still typing")
     s.typingAwareDefer = false
-
-    // CR-05 escalation bump: skips accumulate a bonus (capped at 2), natural completion decays it
-    s.skipEscalation = true
-    let d5 = CountingDelegate()
-    let t5 = BreakTimer(settings: s)
-    t5.delegate = d5
-    check(t5.escalationBump == 0, "CR-05: no escalation bump initially")
-    t5.skip(); t5.skip(); t5.skip()
-    check(t5.escalationBump == 2, "CR-05: consecutive skips → bonus capped at 2")
-    for _ in 0..<120 { _ = t5.tick(idleSeconds: 2.0, externalSuppress: nil) } // two natural completions
-    check(t5.escalationBump == 1, "CR-05: natural completion → bonus decays")
-    s.skipEscalation = false
 
     // CR-04 honest rest: only count a real rest if you "actually leave" after a reminder (window 120s / idle 30s)
     let t0 = Date()

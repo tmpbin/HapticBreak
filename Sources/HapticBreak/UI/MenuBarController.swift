@@ -109,11 +109,14 @@ final class MenuBarController: NSObject {
         if title != lastTitle { lastTitle = title; button.title = title }
         if image !== lastImage { lastImage = image; button.image = image }
 
-        // Reminder-state emphasis: gray when paused, orange when near. Stays nil normally, so the system
-        // adapts tinting to the wallpaper contrast.
+        // Reminder-state emphasis: gray when paused; solid orange the whole time a reminder awaits
+        // acknowledgment (the persistent visual channel of the reminding phase); orange when near.
+        // Stays nil normally, so the system adapts tinting to the wallpaper contrast.
         let tint: NSColor?
         if viewModel.isPaused {
             tint = .secondaryLabelColor
+        } else if viewModel.phase == .reminding {
+            tint = .systemOrange
         } else if viewModel.settings.auxMenubarHighlight && viewModel.remaining <= 60 && viewModel.phase == .working {
             tint = .systemOrange
         } else {
@@ -209,6 +212,9 @@ final class MenuBarController: NSObject {
 
     private func showContextMenu() {
         let menu = NSMenu()
+        if viewModel.phase == .reminding {
+            menu.addItem(withTitle: L.t("menu.acknowledge"), action: #selector(menuAcknowledge), keyEquivalent: "")
+        }
         let pauseTitle = viewModel.pauseReason == .manual ? L.t("menu.resume") : L.t("menu.pause")
         menu.addItem(withTitle: pauseTitle, action: #selector(menuTogglePause), keyEquivalent: "")
         menu.addItem(withTitle: L.t("menu.skip"), action: #selector(menuSkip), keyEquivalent: "")
@@ -233,6 +239,7 @@ final class MenuBarController: NSObject {
         statusItem.menu = nil
     }
 
+    @objc private func menuAcknowledge() { viewModel.acknowledge() }
     @objc private func menuTogglePause() { viewModel.togglePause() }
     @objc private func menuSkip()        { viewModel.skip() }
     @objc private func menuPostpone()    { viewModel.postpone() }

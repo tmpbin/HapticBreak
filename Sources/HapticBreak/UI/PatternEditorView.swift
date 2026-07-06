@@ -1,19 +1,27 @@
 import SwiftUI
 
-/// Pattern editor · single-beat sequencer.
-/// A pattern = a string of "beats", each with its own timbre / strength (1–10) / dullness / gap; the top
-/// timeline visualizes the whole rhythm.
-/// Supports import / export (friendly JSON, convenient for external text editing or AI authoring).
+/// Pattern editor, built around direct manipulation so a first-time user can compose by feel:
+/// - **Canvas**: every beat is a bar — tap to select & preview, drag vertically to set strength.
+/// - **Tap a rhythm**: literally tap the rhythm you have in mind; the gaps are captured for you.
+/// - **Inspector**: one compact row of controls for the selected beat only (timbre / strength / gap).
+/// - Dullness and JSON import/export live under an "Advanced" disclosure for power users.
 struct PatternEditorView: View {
     @ObservedObject var viewModel: AppViewModel
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared
 
     @State private var draft = PatternEditorView.newDraft()
+    @State private var selectedID: UUID?
     @State private var fireOnDrag = true
     @State private var suppressFire = false
     @State private var showFormatHelp = false
+    @State private var showAdvanced = false
     @State private var ioNotice: String?
+
+    // Rhythm recording
+    @State private var recording = false
+    @State private var recordedSteps: [HapticStep] = []
+    @State private var lastTapAt: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -21,7 +29,6 @@ struct PatternEditorView: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ioBar
                     existingList
                     Divider()
                     editor
@@ -29,7 +36,7 @@ struct PatternEditorView: View {
                 .padding(16)
             }
         }
-        .frame(minWidth: 580, maxWidth: .infinity, minHeight: 500, maxHeight: .infinity)
+        .frame(minWidth: 620, maxWidth: .infinity, minHeight: 540, maxHeight: .infinity)
         .sheet(isPresented: $showFormatHelp) { formatHelpSheet }
     }
 
@@ -43,7 +50,7 @@ struct PatternEditorView: View {
                 .toggleStyle(.switch).controlSize(.mini).fixedSize()
             copyBuiltinMenu
             Button {
-                draft = PatternEditorView.newDraft()
+                loadDraft(PatternEditorView.newDraft())
             } label: { Label(L.t("editor.new"), systemImage: "plus") }
         }
         .padding(12)
@@ -61,27 +68,6 @@ struct PatternEditorView: View {
             }
         }
         .menuStyle(.borderlessButton).fixedSize()
-    }
-
-    // MARK: - Import / export toolbar
-
-    private var ioBar: some View {
-        HStack(spacing: 10) {
-            Button { importFile() } label: { Label(L.t("editor.import"), systemImage: "square.and.arrow.down") }
-            Button { exportAll() } label: { Label(L.t("editor.export"), systemImage: "square.and.arrow.up") }
-                .disabled(settings.customPatterns.isEmpty)
-            Divider().frame(height: 16)
-            Button { copyDraft() } label: { Label(L.t("editor.copyJSON"), systemImage: "doc.on.clipboard") }
-            Button { pasteImport() } label: { Label(L.t("editor.pasteJSON"), systemImage: "clipboard") }
-            Spacer()
-            Button { showFormatHelp = true } label: { Label(L.t("editor.format"), systemImage: "questionmark.circle") }
-                .buttonStyle(.borderless)
-            if let ioNotice {
-                Text(ioNotice).font(.caption).foregroundStyle(.secondary).transition(.opacity)
-            }
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
     }
 
     // MARK: - Existing custom patterns list
@@ -118,7 +104,7 @@ struct PatternEditorView: View {
                         .buttonStyle(.borderless).help(L.t("editor.setCurrent")).accessibilityLabel(L.t("editor.setCurrent"))
                         Button { viewModel.testPattern(pattern) } label: { Image(systemName: "play.circle") }
                             .buttonStyle(.borderless).help(L.t("editor.testShort")).accessibilityLabel(L.t("editor.testThis"))
-                        Button { draft = pattern } label: { Image(systemName: "pencil") }
+                        Button { loadDraft(pattern) } label: { Image(systemName: "pencil") }
                             .buttonStyle(.borderless).help(L.t("editor.edit")).accessibilityLabel(L.t("editor.editThis"))
                         Button { settings.deleteCustomPattern(id: pattern.id) } label: {
                             Image(systemName: "trash").foregroundStyle(.red)
@@ -140,39 +126,272 @@ struct PatternEditorView: View {
             HStack {
                 Text(L.t("editor.edit")).font(.subheadline).foregroundStyle(.secondary)
                 Spacer()
-                unifyMenu
+                if !recording {
+                    Button {
+                        startRecording()
+                    } label: { Label(L.t("editor.record"), systemImage: "hand.tap") }
+                }
             }
 
             HStack {
                 Text(L.t("editor.name"))
                 TextField(L.t("editor.namePlaceholder"), text: $draft.name)
                     .textFieldStyle(.roundedBorder)
+                Text(L.t("editor.duration", draft.estimatedDuration))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize()
             }
 
-            timeline
-
-            ForEach(Array(draft.steps.enumerated()), id: \.element.id) { index, _ in
-                stepRow(index: index)
+            if recording {
+                recordPad
+            } else {
+                canvas
+                Text(L.t("editor.canvasHint"))
+                    .font(.caption2).foregroundStyle(.secondary)
+                if let index = selectedIndex {
+                    inspector(index: index)
+                }
+                advancedSection
+                HStack {
+                    Button { viewModel.testPattern(draft) } label: { Label(L.t("editor.testAll"), systemImage: "play.fill") }
+                    Spacer()
+                    Button {
+                        save()
+                    } label: { Label(L.t("editor.save"), systemImage: "tray.and.arrow.down.fill") }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.steps.isEmpty)
+                }
             }
+        }
+    }
+
+    // MARK: - Canvas (tap to select & preview, drag vertically for strength)
+
+    private static let canvasHeight: CGFloat = 132
+
+    private var canvas: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .bottom, spacing: 0) {
+                ForEach(Array(draft.steps.enumerated()), id: \.element.id) { index, step in
+                    BeatBar(step: step,
+                            selected: step.id == selectedID,
+                            color: timbreColor(step.timbre),
+                            canvasHeight: Self.canvasHeight,
+                            onSelect: {
+                                selectedID = step.id
+                                fire(step)
+                            },
+                            onStrength: { newValue in
+                                guard draft.steps.indices.contains(index),
+                                      draft.steps[index].strength != newValue else { return }
+                                draft.steps[index].strength = newValue
+                                selectedID = step.id
+                                fire(draft.steps[index])
+                            })
+                    if index < draft.steps.count - 1 {
+                        Spacer().frame(width: gapWidth(draft.steps[index].gapMsAfter))
+                    }
+                }
+
+                Button {
+                    let step = nextStep()
+                    draft.steps.append(step)
+                    selectedID = step.id
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 14)
+                .padding(.bottom, Self.canvasHeight / 2 - 10)
+                .help(L.t("editor.addStep"))
+                .accessibilityLabel(L.t("editor.addStep"))
+            }
+            .frame(height: Self.canvasHeight, alignment: .bottom)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.neutralFill)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+    }
+
+    private func gapWidth(_ gapMs: Int) -> CGFloat {
+        max(8, min(56, CGFloat(gapMs) / 12))
+    }
+
+    // MARK: - Inspector (selected beat only)
+
+    private var selectedIndex: Int? {
+        guard let selectedID else { return draft.steps.isEmpty ? nil : draft.steps.count - 1 }
+        return draft.steps.firstIndex { $0.id == selectedID }
+    }
+
+    private func inspector(index: Int) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Text(L.t("editor.stepN", index + 1))
+                    .font(.caption.weight(.semibold)).frame(width: 56, alignment: .leading)
+
+                Picker("", selection: Binding(
+                    get: { draft.steps[index].timbre },
+                    set: { draft.steps[index].timbre = $0; fire(draft.steps[index]) })) {
+                    ForEach(HapticTimbre.allCases) { t in Text(t.displayName).tag(t) }
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 210)
+                .id("editor.timbre.\(l10n.language.rawValue)")
+
+                Spacer()
+
+                Button { move(index, by: -1) } label: { Image(systemName: "arrow.left") }
+                    .buttonStyle(.borderless).disabled(index == 0)
+                    .help(L.t("editor.moveLeft")).accessibilityLabel(L.t("editor.moveLeft"))
+                Button { move(index, by: 1) } label: { Image(systemName: "arrow.right") }
+                    .buttonStyle(.borderless).disabled(index == draft.steps.count - 1)
+                    .help(L.t("editor.moveRight")).accessibilityLabel(L.t("editor.moveRight"))
+                Button { duplicate(index) } label: { Image(systemName: "plus.square.on.square") }
+                    .buttonStyle(.borderless)
+                    .help(L.t("editor.duplicateStep")).accessibilityLabel(L.t("editor.duplicateStep"))
+                Button {
+                    let removed = draft.steps.remove(at: index)
+                    if removed.id == selectedID { selectedID = draft.steps.last?.id }
+                } label: {
+                    Image(systemName: "trash").foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+                .disabled(draft.steps.count <= 1)
+                .help(L.t("editor.deleteStep")).accessibilityLabel(L.t("editor.deleteStep"))
+            }
+
+            HStack(spacing: 10) {
+                Text(L.t("editor.strength")).font(.caption2).foregroundStyle(.secondary)
+                    .frame(width: 56, alignment: .leading)
+                Slider(value: Binding(
+                    get: { Double(draft.steps[index].strength) },
+                    set: { draft.steps[index].strength = Int($0.rounded()) }),
+                    in: 1...10, step: 1)
+                    .onChange(of: draft.steps[index].strength) { _ in fire(draft.steps[index]) }
+                Text("\(draft.steps[index].strength)")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary).frame(width: 20)
+
+                Text(L.t("editor.gapToNext")).font(.caption2).foregroundStyle(.secondary)
+                    .frame(width: 76, alignment: .trailing)
+                Slider(value: Binding(
+                    get: { Double(draft.steps[index].gapMsAfter) },
+                    set: { draft.steps[index].gapMsAfter = Int(($0 / 10).rounded()) * 10 }),
+                    in: 0...1500)
+                    .disabled(index == draft.steps.count - 1)
+                    .opacity(index == draft.steps.count - 1 ? 0.35 : 1)
+                Text("\(draft.steps[index].gapMsAfter)ms")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary).frame(width: 48)
+            }
+        }
+        .padding(8)
+        .background(Theme.neutralFill.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+    }
+
+    // MARK: - Rhythm recording (tap the rhythm, gaps are captured)
+
+    private var recordPad: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L.t("editor.recordHint"))
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Button {
-                draft.steps.append(nextStep())
-            } label: { Label(L.t("editor.addStep"), systemImage: "plus.circle") }
-            .buttonStyle(.borderless)
-
-            Text(L.t("editor.hint"))
-                .font(.caption2).foregroundStyle(.secondary)
+                recordTap()
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "hand.tap.fill").font(.system(size: 28))
+                    Text(L.t("editor.recordPad")).font(.callout)
+                    Text(recordedSteps.isEmpty ? " " : L.t("editor.steps", recordedSteps.count))
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 150)
+            }
+            .buttonStyle(.plain)
+            .background(Color.accentColor.opacity(0.10))
+            .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                .strokeBorder(Color.accentColor.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
 
             HStack {
-                Button { viewModel.testPattern(draft) } label: { Label(L.t("editor.testAll"), systemImage: "play.fill") }
-                Text(L.t("editor.duration", draft.estimatedDuration)).font(.caption).foregroundStyle(.secondary)
+                Button(L.t("btn.cancel")) { recording = false }
                 Spacer()
                 Button {
-                    save()
-                } label: { Label(L.t("editor.save"), systemImage: "tray.and.arrow.down.fill") }
+                    finishRecording()
+                } label: { Label(L.t("editor.recordUse", recordedSteps.count), systemImage: "checkmark") }
                 .buttonStyle(.borderedProminent)
-                .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.steps.isEmpty)
+                .disabled(recordedSteps.count < 2)
             }
+        }
+    }
+
+    private func startRecording() {
+        recordedSteps = []
+        lastTapAt = nil
+        recording = true
+    }
+
+    private func recordTap() {
+        let now = Date()
+        if let last = lastTapAt, let lastIndex = recordedSteps.indices.last {
+            let gap = Int(now.timeIntervalSince(last) * 1000)
+            recordedSteps[lastIndex].gapMsAfter = max(60, min(2000, gap))
+        }
+        let step = HapticStep(timbre: .crisp, strength: 6, dullness: 0.3, gapMsAfter: 0)
+        recordedSteps.append(step)
+        lastTapAt = now
+        viewModel.testStep(step)
+    }
+
+    private func finishRecording() {
+        guard recordedSteps.count >= 2 else { recording = false; return }
+        draft.steps = recordedSteps
+        selectedID = recordedSteps.first?.id
+        recording = false
+    }
+
+    // MARK: - Advanced (dullness + unify + JSON)
+
+    private var advancedSection: some View {
+        DisclosureGroup(isExpanded: $showAdvanced) {
+            VStack(alignment: .leading, spacing: 10) {
+                if let index = selectedIndex {
+                    HStack(spacing: 10) {
+                        Text(L.t("editor.dullness")).font(.caption2).foregroundStyle(.secondary)
+                            .frame(width: 56, alignment: .leading)
+                        Slider(value: Binding(
+                            get: { draft.steps[index].dullness },
+                            set: { draft.steps[index].dullness = $0 }),
+                            in: 0...1, step: 0.05)
+                            .onChange(of: draft.steps[index].dullness) { _ in fire(draft.steps[index]) }
+                        Text(String(format: "%.2f", draft.steps[index].dullness))
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary).frame(width: 32)
+                        unifyMenu
+                    }
+                }
+                HStack(spacing: 10) {
+                    Button { importFile() } label: { Label(L.t("editor.import"), systemImage: "square.and.arrow.down") }
+                    Button { exportAll() } label: { Label(L.t("editor.export"), systemImage: "square.and.arrow.up") }
+                        .disabled(settings.customPatterns.isEmpty)
+                    Divider().frame(height: 16)
+                    Button { copyDraft() } label: { Label(L.t("editor.copyJSON"), systemImage: "doc.on.clipboard") }
+                    Button { pasteImport() } label: { Label(L.t("editor.pasteJSON"), systemImage: "clipboard") }
+                    Spacer()
+                    Button { showFormatHelp = true } label: { Label(L.t("editor.format"), systemImage: "questionmark.circle") }
+                        .buttonStyle(.borderless)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                if let ioNotice {
+                    Text(ioNotice).font(.caption).foregroundStyle(.secondary).transition(.opacity)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Text(L.t("editor.advanced")).font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -190,104 +409,6 @@ struct PatternEditorView: View {
             Label(L.t("editor.unify"), systemImage: "wand.and.stars").font(.caption)
         }
         .menuStyle(.borderlessButton).fixedSize()
-    }
-
-    // MARK: - Timeline visualization (height = strength, color = timbre, horizontal spacing ∝ gap)
-
-    private var timeline: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .bottom, spacing: 0) {
-                ForEach(Array(draft.steps.enumerated()), id: \.element.id) { index, step in
-                    Button { fire(step) } label: {
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(timbreColor(step.timbre).opacity(0.4))
-                            .frame(width: 14, height: 10 + CGFloat(step.strength) * 6)
-                            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(timbreColor(step.timbre), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .help("\(step.timbre.displayName) · \(step.strength)")
-                    if index < draft.steps.count - 1 {
-                        Spacer().frame(width: max(6, min(48, CGFloat(step.gapMsAfter) / 12)))
-                    }
-                }
-            }
-            .frame(height: 80, alignment: .bottom)
-            .padding(.horizontal, 4)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(Theme.neutralFill)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-    }
-
-    private func stepRow(index: Int) -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                Text(L.t("editor.stepN", index + 1)).font(.caption.weight(.semibold)).frame(width: 52, alignment: .leading)
-
-                Picker("", selection: Binding(
-                    get: { draft.steps[index].timbre },
-                    set: { draft.steps[index].timbre = $0; fire(draft.steps[index]) })) {
-                    ForEach(HapticTimbre.allCases) { t in Text(t.displayName).tag(t) }
-                }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 200)
-
-                Stepper(L.t("editor.stepDelay", draft.steps[index].gapMsAfter),
-                        value: Binding(get: { draft.steps[index].gapMsAfter },
-                                       set: { draft.steps[index].gapMsAfter = $0 }),
-                        in: 0...2000, step: 10)
-                    .fixedSize()
-                    .opacity(index == draft.steps.count - 1 ? 0.35 : 1)
-                    .disabled(index == draft.steps.count - 1)
-
-                Spacer()
-
-                Button { fire(draft.steps[index]) } label: { Image(systemName: "hand.tap") }
-                    .buttonStyle(.borderless).help(L.t("editor.testStep")).accessibilityLabel(L.t("editor.testStepN", index + 1))
-                rowMenu(index: index)
-                Button { draft.steps.remove(at: index) } label: {
-                    Image(systemName: "minus.circle").foregroundStyle(.red)
-                }
-                .buttonStyle(.borderless)
-                .disabled(draft.steps.count <= 1)
-                .help(L.t("editor.deleteStep")).accessibilityLabel(L.t("editor.deleteStepN", index + 1))
-            }
-
-            HStack(spacing: 10) {
-                Text(L.t("editor.strength")).font(.caption2).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
-                Slider(value: Binding(
-                    get: { Double(draft.steps[index].strength) },
-                    set: { draft.steps[index].strength = Int($0.rounded()) }),
-                    in: 1...10, step: 1)
-                    .onChange(of: draft.steps[index].strength) { _ in fire(draft.steps[index]) }
-                Text("\(draft.steps[index].strength)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary).frame(width: 20)
-
-                Text(L.t("editor.dullness")).font(.caption2).foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
-                Slider(value: Binding(
-                    get: { draft.steps[index].dullness },
-                    set: { draft.steps[index].dullness = $0 }),
-                    in: 0...1, step: 0.05)
-                    .onChange(of: draft.steps[index].dullness) { _ in fire(draft.steps[index]) }
-                Text(String(format: "%.2f", draft.steps[index].dullness)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary).frame(width: 32)
-            }
-        }
-        .padding(8)
-        .background(Theme.neutralFill.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-    }
-
-    private func rowMenu(index: Int) -> some View {
-        Menu {
-            Button { move(index, by: -1) } label: { Label(L.t("editor.moveUp"), systemImage: "arrow.up") }
-                .disabled(index == 0)
-            Button { move(index, by: 1) } label: { Label(L.t("editor.moveDown"), systemImage: "arrow.down") }
-                .disabled(index == draft.steps.count - 1)
-            Button { duplicate(index) } label: { Label(L.t("editor.duplicateStep"), systemImage: "plus.square.on.square") }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-        .menuStyle(.borderlessButton).fixedSize()
-        .help(L.t("editor.stepMore"))
     }
 
     // MARK: - Format help panel
@@ -328,12 +449,21 @@ struct PatternEditorView: View {
         viewModel.testStep(step)
     }
 
+    private func loadDraft(_ pattern: HapticPattern) {
+        draft = pattern
+        selectedID = pattern.steps.first?.id
+        recording = false
+    }
+
     /// New beat: inherit the previous beat's timbre/dullness, take a mid-level strength, for quickly
     /// extending the rhythm.
     private func nextStep() -> HapticStep {
+        if let last = draft.steps.indices.last, draft.steps[last].gapMsAfter == 0 {
+            draft.steps[last].gapMsAfter = 150
+        }
         let last = draft.steps.last
         return HapticStep(timbre: last?.timbre ?? .crisp, strength: 6,
-                          dullness: last?.dullness ?? 0.3, gapMsAfter: 150)
+                          dullness: last?.dullness ?? 0.3, gapMsAfter: 0)
     }
 
     private func move(_ index: Int, by delta: Int) {
@@ -347,6 +477,7 @@ struct PatternEditorView: View {
         var copy = draft.steps[index]
         copy.id = UUID()
         draft.steps.insert(copy, at: index + 1)
+        selectedID = copy.id
     }
 
     private func unifyTimbre(_ t: HapticTimbre) {
@@ -400,17 +531,18 @@ struct PatternEditorView: View {
         guard !draft.name.isEmpty, !draft.steps.isEmpty else { return }
         settings.upsertCustomPattern(draft)
         settings.selectedPatternID = draft.id
+        flash(L.t("editor.saved"))
     }
 
     private func loadCopy(of pattern: HapticPattern) {
-        draft = HapticPattern(
+        loadDraft(HapticPattern(
             id: "custom.\(UUID().uuidString)",
             name: L.t("editor.copySuffix", pattern.displayName),
             symbol: "waveform",
             steps: pattern.steps.map {
                 HapticStep(timbre: $0.timbre, strength: $0.strength, dullness: $0.dullness, gapMsAfter: $0.gapMsAfter)
             },
-            isBuiltin: false)
+            isBuiltin: false))
     }
 
     private func timbreColor(_ t: HapticTimbre) -> Color {
@@ -429,5 +561,48 @@ struct PatternEditorView: View {
             steps: [HapticStep(timbre: .crisp, strength: 6, dullness: 0.3, gapMsAfter: 150),
                     HapticStep(timbre: .crisp, strength: 6, dullness: 0.3, gapMsAfter: 0)],
             isBuiltin: false)
+    }
+}
+
+/// One beat on the canvas: bar height = strength, color = timbre. Tap to select & preview; drag
+/// vertically to set strength directly (the gesture owns both, so a still press-and-release is a tap).
+private struct BeatBar: View {
+    var step: HapticStep
+    var selected: Bool
+    var color: Color
+    var canvasHeight: CGFloat
+    var onSelect: () -> Void
+    var onStrength: (Int) -> Void
+
+    @State private var dragging = false
+
+    private var barHeight: CGFloat { 16 + CGFloat(step.strength) * 10.5 }
+
+    var body: some View {
+        // A full-height transparent hit area so drags anywhere in the column adjust this beat.
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(color.opacity(selected ? 0.75 : 0.38))
+                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(color, lineWidth: selected ? 1.8 : 1))
+                .frame(height: barHeight)
+        }
+        .frame(width: 24, height: canvasHeight)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !dragging && abs(value.translation.height) < 5 { return }
+                    dragging = true
+                    let fraction = 1 - min(max(value.location.y / canvasHeight, 0), 1)
+                    onStrength(1 + Int((fraction * 9).rounded()))
+                }
+                .onEnded { _ in
+                    if !dragging { onSelect() }
+                    dragging = false
+                }
+        )
+        .help("\(step.timbre.displayName) · \(step.strength)")
     }
 }

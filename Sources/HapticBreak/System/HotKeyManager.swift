@@ -4,7 +4,8 @@ import Carbon.HIToolbox
 /// Global hotkey management (Carbon RegisterEventHotKey).
 ///
 /// Compared to `NSEvent` global monitoring, Carbon hotkeys require no "Accessibility" permission, which
-/// suits distribution. Default bindings: ⌃⌥Space pause/resume, ⌃⌥S skip, ⌃⌥B break now.
+/// suits distribution. Bindings are user-editable (see `HotKeyBindings`); factory defaults:
+/// ⌃⌥Space pause/resume, ⌃⌥S skip, ⌃⌥B buzz now, ⌃⌥⏎ acknowledge (start the break).
 final class HotKeyManager {
 
     static let shared = HotKeyManager()
@@ -15,15 +16,15 @@ final class HotKeyManager {
     private var actions: [UInt32: () -> Void] = [:]
     private var nextID: UInt32 = 1
 
-    private static let ctrl = UInt32(controlKey)
-    private static let opt  = UInt32(optionKey)
-
-    func registerDefaults(togglePause: @escaping () -> Void,
+    func registerBindings(_ bindings: HotKeyBindings,
+                          togglePause: @escaping () -> Void,
                           skip: @escaping () -> Void,
-                          breakNow: @escaping () -> Void) {
-        register(keyCode: UInt32(kVK_Space),  modifiers: Self.ctrl | Self.opt, action: togglePause)
-        register(keyCode: UInt32(kVK_ANSI_S), modifiers: Self.ctrl | Self.opt, action: skip)
-        register(keyCode: UInt32(kVK_ANSI_B), modifiers: Self.ctrl | Self.opt, action: breakNow)
+                          breakNow: @escaping () -> Void,
+                          acknowledge: @escaping () -> Void) {
+        register(keyCode: bindings.pause.keyCode,       modifiers: bindings.pause.modifiers,       action: togglePause)
+        register(keyCode: bindings.skip.keyCode,        modifiers: bindings.skip.modifiers,        action: skip)
+        register(keyCode: bindings.buzz.keyCode,        modifiers: bindings.buzz.modifiers,        action: breakNow)
+        register(keyCode: bindings.acknowledge.keyCode, modifiers: bindings.acknowledge.modifiers, action: acknowledge)
     }
 
     func register(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {

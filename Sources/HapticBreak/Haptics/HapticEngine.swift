@@ -50,29 +50,6 @@ struct ResolvedTone: Equatable {
     let float1: Float   // Pulse width / timbre timing (dullness)
 }
 
-/// The three discrete strength levels in the private actuation model — **used only by the "Haptic Lab"
-/// research/browse layer**; the production path has dropped levels, fixing `flags=0` and using `float0`
-/// as the linear main control.
-enum HapticStrength: Int32, CaseIterable, Identifiable {
-    case light  = 0x1
-    case medium = 0x2
-    case firm   = 0x4
-
-    var id: Int32 { rawValue }
-    var flags: UInt32 { UInt32(rawValue) }
-
-    /// Framework-specific term; kept identical across languages, not localized.
-    var label: String {
-        switch self {
-        case .light:  return "Light"
-        case .medium: return "Medium"
-        case .firm:   return "Firm"
-        }
-    }
-
-    init?(flags: UInt32) { self.init(rawValue: Int32(bitPattern: flags)) }
-}
-
 /// Haptic backend abstraction: driven by the **resolved concrete parameters** `ResolvedTone`.
 protocol HapticEngine: AnyObject {
     var isAvailable: Bool { get }

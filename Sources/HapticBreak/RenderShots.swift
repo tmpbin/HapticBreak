@@ -17,9 +17,12 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
     // (RuntimeMode), so Settings.shared is backed by an in-memory store.
     let s = Settings.shared
     s.breakIntervalMinutes = 25
+    s.restMinutes = 0
     s.selectedPatternID = HapticPattern.urgent.id
     s.strength = 6
-    s.reminderRepeat = 3
+    s.remindPulseSeconds = 20
+    s.remindPulseMax = 4
+    s.ackGestureEnabled = true
     s.auxFlashScreen = true
     s.postponeMinutes = 5
     s.idleEnabled = true
@@ -27,18 +30,20 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
     s.idleResetMinutes = 5
     s.skipDuringFullscreen = true
     s.respectFocusMode = true
-    s.pomodoroEnabled = false
-    s.pomodoroWorkMinutes = 25
-    s.pomodoroBreakMinutes = 5
     s.auxMenubarHighlight = true
     s.soundEnabled = false
     s.soundName = "Tink"
     s.menuBarStyle = .iconCountdown
     s.typingAwareDefer = true
     s.gentleHeadsUp = true
-    s.skipEscalation = false
     s.pauseDuringMic = true
     s.enableShortcuts = true
+
+    // Representative "mid-afternoon" rhythm: morning ramp-up, lunch dip, afternoon block + real rests.
+    var rhythm = TodayRhythm()
+    let hourLoad = [9: 2400, 10: 3300, 11: 2900, 12: 800, 13: 1900, 14: 3100, 15: 2600]
+    for (hour, seconds) in hourLoad { rhythm.activeByHour[hour] = seconds }
+    rhythm.breakMinutes = [10 * 60 + 25, 11 * 60 + 45, 14 * 60 + 30]
 
     let vm = AppViewModel()
     vm.remaining = 912
@@ -47,7 +52,34 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
     vm.pauseReason = .none
     vm.backendName = L.t("backend.name.private")
     vm.backendAvailable = true
+    vm.todayBreaks = 3
+    vm.todayRhythm = rhythm
     vm.panelVisible = true   // Snapshot represents the "panel open" state: the ring renders as active (second hand/shimmer normal, not the collapsed power-saving state)
+
+    // A second view model frozen in the reminding phase, to review the acknowledge-to-stop UI
+    // (orange ring, "Start break" primary action).
+    let vmReminding = AppViewModel()
+    vmReminding.remaining = 0
+    vmReminding.total = 1
+    vmReminding.phase = .reminding
+    vmReminding.pauseReason = .none
+    vmReminding.backendName = L.t("backend.name.private")
+    vmReminding.backendAvailable = true
+    vmReminding.todayBreaks = 3
+    vmReminding.todayRhythm = rhythm
+    vmReminding.panelVisible = true
+
+    // A third view model frozen mid-rest, to review the breathing companion (halo + rotating tips).
+    let vmResting = AppViewModel()
+    vmResting.remaining = 224
+    vmResting.total = 300
+    vmResting.phase = .resting
+    vmResting.pauseReason = .none
+    vmResting.backendName = L.t("backend.name.private")
+    vmResting.backendAvailable = true
+    vmResting.todayBreaks = 3
+    vmResting.todayRhythm = rhythm
+    vmResting.panelVisible = true
 
     func shoot<V: View>(_ name: String, _ view: V, light: Bool) {
         // Composite an adaptive background (simulating the NSPopover / NSWindow surface) to faithfully review dark-mode contrast.
@@ -84,7 +116,11 @@ func renderShots(to dir: String, language: AppLanguage? = nil) -> Int32 {
 
     for light in [true, false] {
         shoot("popover", PopoverView(viewModel: vm), light: light)
+        shoot("popover-reminding", PopoverView(viewModel: vmReminding), light: light)
+        shoot("popover-resting", PopoverView(viewModel: vmResting), light: light)
         shoot("settings", SettingsView(viewModel: vm), light: light)
+        shoot("settings-advanced", SettingsView(viewModel: vm, initialTab: .advanced), light: light)
+        shoot("about", AboutView(viewModel: vm), light: light)
         shoot("statistics", StatisticsView(), light: light)
         shoot("editor", PatternEditorView(viewModel: vm), light: light)
         shoot("hapticlab", HapticLabView(), light: light)

@@ -8,9 +8,17 @@ MAKE_DMG="${2:-}"      # 传入 "dmg" 则在打包后生成可分发的 .dmg
 APP_NAME="HapticBreak"
 BUNDLE_ID="com.aremind.hapticbreak"
 
-# 版本号可由环境变量注入（CI 用 git tag 注入）；本地默认 1.0.0。
-VERSION="${HB_VERSION:-1.0.0}"
-BUILD_NUMBER="${HB_BUILD:-1}"
+# 版本号可由环境变量注入（CI 用 git tag 注入）；本地默认与当前发布版一致。
+VERSION="${HB_VERSION:-1.0.1}"
+# 构建号（CFBundleVersion）：应用内升级按它比较新旧，必须随版本单调递增。
+# 未显式提供时由版本号导出（1.0.1 → 10001；预发布后缀忽略）。
+if [ -n "${HB_BUILD:-}" ]; then
+    BUILD_NUMBER="$HB_BUILD"
+else
+    BASE_VERSION="${VERSION%%-*}"
+    IFS='.' read -r V_MAJOR V_MINOR V_PATCH <<< "$BASE_VERSION"
+    BUILD_NUMBER=$(( ${V_MAJOR:-0} * 10000 + ${V_MINOR:-0} * 100 + ${V_PATCH:-0} ))
+fi
 
 # 代码签名身份：默认 "-" = ad-hoc（本地零门槛）。
 # 传入 Developer ID 身份（如 "Developer ID Application: Name (TEAMID)"）即启用
@@ -29,7 +37,7 @@ SU_FEED_URL="${HB_FEED_URL:-}"
 if [ -z "$SU_FEED_URL" ] && [ -f "packaging/autoupdate/appcast-url.txt" ]; then
     SU_FEED_URL="$(tr -d '[:space:]' < packaging/autoupdate/appcast-url.txt)"
 fi
-[ -z "$SU_FEED_URL" ] && SU_FEED_URL="https://OWNER.github.io/HapticBreak/appcast.xml"
+[ -z "$SU_FEED_URL" ] && SU_FEED_URL="https://tmpbin.github.io/HapticBreak/appcast.xml"
 
 echo "==> swift build -c $CONFIG"
 swift build -c "$CONFIG"

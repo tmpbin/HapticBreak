@@ -142,7 +142,7 @@ jobs:
             --notes-file "${{ steps.notes.outputs.path }}" \
             $([ "${{ steps.meta.outputs.prerelease }}" = "true" ] && echo "--prerelease")
 
-      - name: 生成并发布升级源 appcast 到 gh-pages（配置了私钥才执行）
+      - name: 生成并发布升级源 appcast 与官网到 gh-pages（配置了私钥才执行）
         if: ${{ env.UPDATE_PRIVATE_KEY != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -188,8 +188,10 @@ jobs:
             find . -maxdepth 1 ! -name . ! -name .git -exec rm -rf {} + 2>/dev/null || true
           fi
           cp "$WORK/appcast.xml" ./appcast.xml
+          # 同步官网（宣传页）：仓库 site/ 目录即 GitHub Pages 站点内容。
+          cp -R "$GITHUB_WORKSPACE/site/." ./
           touch .nojekyll   # 避免 Pages 的 Jekyll 处理 XML
-          git add appcast.xml .nojekyll
+          git add -A
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -qm "appcast: HapticBreak $VERSION" || { echo "appcast 无变化，跳过发布。"; exit 0; }

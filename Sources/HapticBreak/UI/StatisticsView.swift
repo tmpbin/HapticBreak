@@ -52,7 +52,7 @@ struct StatisticsView: View {
                         StatCard(title: L.t("stats.workTime"), value: L.t("stats.minShort", today.activeMinutes), symbol: "clock.fill", tint: .blue)
                         StatCard(title: L.t("stats.breaks"), value: "\(today.breaks)", symbol: "hand.tap.fill", tint: .pink)
                         StatCard(title: L.t("stats.skips"), value: "\(today.skips)", symbol: "forward.end.fill", tint: .orange)
-                        StatCard(title: L.t("stats.pomodoros"), value: "\(today.pomodoros)", symbol: "leaf.fill", tint: .green)
+                        StatCard(title: L.t("stats.cycles"), value: "\(today.cycles)", symbol: "leaf.fill", tint: .green)
                     }
 
                     HStack(spacing: 6) {

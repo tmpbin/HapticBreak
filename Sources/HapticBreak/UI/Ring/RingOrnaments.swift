@@ -23,11 +23,14 @@ private func propagateContentsScale(_ scale: CGFloat, to layer: CALayer) {
 // MARK: - Shimmer
 
 /// A soft highlight band slowly orbiting the ring (5.2 s per lap, clockwise — matching the second
-/// hand), rendered twice from one orbit phase: a **bright band on the lit (colored) arc** and a
-/// **faint one on the remaining gray track** — so the whole ring feels alive with a clear lit/track
-/// contrast (the committed SwiftUI look). Each band is a conic gradient spinning *inside* a fixed
-/// arc-shaped mask; the spins are repeating render-server animations committed once, and the masks
-/// only change when the lit fraction changes (once per minute).
+/// hand), layered so there are **no seams anywhere**: a faint *base* band covers the entire ring
+/// (a closed circle — no endpoints, no caps), and an *extra* band masked to exactly the colored
+/// arc (round caps mirroring it) adds the lit/track brightness contrast on top. Any pixel of the
+/// arc — cap discs included — receives base + extra; any track pixel receives base only, so the
+/// only brightness step coincides with the arc's own color edge and nothing "appears" at the ends.
+/// Each band is a conic gradient spinning *inside* a fixed mask; the spins are repeating
+/// render-server animations committed once, and only the arc mask changes (once per minute,
+/// spring-following the arc's retraction).
 struct ShimmerOrnament: NSViewRepresentable {
     var lineWidth: CGFloat
     var litFrac: Double
@@ -44,7 +47,7 @@ struct ShimmerOrnament: NSViewRepresentable {
 
 final class ShimmerOrnamentView: NSView {
     private let lineWidth: CGFloat
-    /// Bright band clipped to the lit arc; faint band clipped to the gray remainder.
+    /// Extra band clipped to the colored arc; base band covering the full ring (closed circle).
     private let litGradient = CAGradientLayer()
     private let litMask = CAShapeLayer()
     private let trackGradient = CAGradientLayer()
@@ -90,7 +93,8 @@ final class ShimmerOrnamentView: NSView {
         let clamped = max(0, min(1, frac))
         guard clamped != litFrac else { return }
         litFrac = clamped
-        applyMaskSplit()
+        guard builtSize != .zero else { return }   // Pre-layout: rebuildIfNeeded will snap it in place
+        applyArcMask(animated: true)
     }
 
     /// Same travelling-band stops as the SwiftUI original; only the crest opacity differs per band.
@@ -108,8 +112,9 @@ final class ShimmerOrnamentView: NSView {
         gradient.locations = [0, 0.18, 0.34, 0.5, 0.66, 0.82, 1]
     }
 
-    /// An arc-shaped stroke mask; the whole mask layer is pre-rotated −90° so arcs start at 12 o'clock,
-    /// exactly like the old `Circle().trim(...).rotationEffect(-90°)`.
+    /// A ring-stroke mask; the whole mask layer is pre-rotated −90° so arcs start at 12 o'clock,
+    /// exactly like the old `Circle().trim(...).rotationEffect(-90°)`. Round caps so the arc mask
+    /// mirrors the colored arc's geometry pixel for pixel (irrelevant for the closed base circle).
     private func configureMask(_ mask: CAShapeLayer) {
         mask.bounds = bounds
         mask.position = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -122,15 +127,30 @@ final class ShimmerOrnamentView: NSView {
         mask.setValue(-CGFloat.pi / 2, forKeyPath: "transform.rotation.z")
     }
 
-    /// The lit arc gets the bright band, the gray remainder the faint one (shared orbit phase).
-    private func applyMaskSplit() {
+    /// Keep the extra band congruent with the colored arc (round caps included) — cap discs get
+    /// exactly the same light as the arc body, so nothing special ever happens at the ends. The
+    /// minute deduction retracts the arc with a 0.5 s spring (`MinuteArc`); the mask follows with
+    /// the same spring so the sheen never outruns the arc.
+    private func applyArcMask(animated: Bool) {
+        setStroke(litMask, keyPath: "strokeEnd", to: litFrac, animated: animated)
+    }
+
+    /// Matches MinuteArc's `.spring(response: 0.5, dampingFraction: 0.6)`.
+    private func setStroke(_ mask: CAShapeLayer, keyPath: String, to value: Double, animated: Bool) {
+        let from = (mask.presentation() ?? mask).value(forKeyPath: keyPath)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        litMask.strokeStart = 0
-        litMask.strokeEnd = litFrac
-        trackMask.strokeStart = litFrac
-        trackMask.strokeEnd = 1
+        mask.setValue(value, forKeyPath: keyPath)
         CATransaction.commit()
+        guard animated else { mask.removeAnimation(forKey: keyPath); return }
+        let spring = CASpringAnimation(keyPath: keyPath)
+        spring.fromValue = from
+        spring.toValue = value
+        spring.mass = 1
+        spring.stiffness = pow(2 * .pi / 0.5, 2)
+        spring.damping = 2 * 0.6 * sqrt(spring.stiffness)
+        spring.duration = spring.settlingDuration
+        mask.add(spring, forKey: keyPath)
     }
 
     private func rebuildIfNeeded() {
@@ -138,11 +158,14 @@ final class ShimmerOrnamentView: NSView {
         builtSize = bounds.size
 
         // Hosts pin the masks in place while the gradient squares spin inside them.
-        // Peaks are the committed SwiftUI values raised ~5 points per user tuning.
-        configureBand(litGradient, peak: 0.32)
+        // The bands stack additively on the arc: base 0.10 everywhere + extra 0.22 on the arc
+        // = the committed 0.32 total, with the track keeping its faint 0.10.
+        configureBand(litGradient, peak: 0.22)
         configureBand(trackGradient, peak: 0.10)
         configureMask(litMask)
         configureMask(trackMask)
+        trackMask.strokeStart = 0   // The base band is a closed circle: no endpoints exist at all
+        trackMask.strokeEnd = 1
 
         let litHost = CALayer()
         let trackHost = CALayer()
@@ -155,7 +178,7 @@ final class ShimmerOrnamentView: NSView {
             host.compositingFilter = "linearDodgeBlendMode"
             root.addSublayer(host)
         }
-        applyMaskSplit()
+        applyArcMask(animated: false)
         syncScale()
         startSpin()
     }

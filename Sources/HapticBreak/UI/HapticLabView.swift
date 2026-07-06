@@ -1,15 +1,12 @@
 import SwiftUI
 
-/// Haptic Lab: a calibration bench based on reverse engineering + on-device testing. From "production"
-/// down to "low level":
-/// 1. **Timbre family assignment**: assign a representative `actuationID` to each of tap/crisp/low-buzz,
-///    written to `HapticProfile` and persisted across launches.
-/// 2. **Strength curve 1→10**: pick timbre + dullness, and audition end-to-end the float0 strength curve
-///    the app actually uses.
-/// 3. **Actuation browser**: feel every timbre × Light/Medium/Firm one by one, to pick IDs for the three families above.
-/// 4. **Raw probe**: drive all parameters of `MTActuatorActuate` directly, for low-level verification.
+/// Haptic Lab: a small calibration bench for tuning how HapticBreak feels on *this* machine.
+/// Two jobs, top to bottom:
+/// 1. **Timbre feel check** — audition the three timbre families (soft / crisp / low-buzz) and, if one
+///    feels wrong on this trackpad, switch it to an alternative actuation (persisted across launches).
+/// 2. **Strength curve 1→10** — audition the exact strength scale the app plays, end to end.
 
-// MARK: - Timbre catalog (ActuationID; the community-recognized `__tpad_act_plist` set, labels are measured semantics)
+// MARK: - Timbre catalog (alternative actuations per family, labelled by measured feel)
 
 struct LabWaveform: Identifiable, Hashable {
     let id: Int32
@@ -36,26 +33,17 @@ enum HapticLabCatalog {
 /// time, avoid blocking the main thread); all `@Published` writes go back to the main thread. Sequence
 /// playback uses `generation` guarding, so a new trigger cancels the old sequence.
 final class HapticLab: ObservableObject, @unchecked Sendable {
-    @Published var lastRet: Int32 = 0
     @Published var running = false
     @Published var nowPlaying: String = ""
 
-    // Strength-curve audition controls (production three axes).
+    // Strength-curve audition controls (the exact production resolution path).
     @Published var curveTimbre: HapticTimbre = .crisp
-    @Published var curveDullness: Double = 0.3
     @Published var curveStrength: Int = 5
-
-    // Raw actuation probe: drive all parameters of MTActuatorActuate directly.
-    @Published var rawActuationID: Int32 = 6
-    @Published var rawStrengthFlags: UInt32 = 0       // 0=no level (production), 0x1=Light, 0x2=Medium, 0x4=Firm
-    @Published var rawScale: Double = 1.0             // 4th arg float0: main scale
-    @Published var rawTimeScale: Double = 0.4         // 5th arg float1: pulse width / timbre timing (dullness)
 
     /// Fire once on slide / param change, for continuously "sweeping" parameters to find the right feel. On by default.
     @Published var fireOnDrag = true
 
     let isAvailable: Bool
-    let deviceDescription: String
 
     private let engine = PrivateHapticEngine(debug: false)
     private let queue = DispatchQueue(label: "com.aremind.hapticbreak.lab", qos: .userInteractive)
@@ -64,15 +52,14 @@ final class HapticLab: ObservableObject, @unchecked Sendable {
 
     init() {
         isAvailable = engine.isAvailable
-        deviceDescription = engine.deviceID.map { String(format: "0x%llx", $0) } ?? "—"
     }
 
-    // MARK: Timbre family assignment
+    // MARK: Timbre feel check
 
-    /// Test a timbre family's currently assigned representative ID (mid strength, crisp), to confirm the ID is right.
+    /// Audition a timbre family's currently assigned actuation (mid strength) — the exact production feel.
     func fireTimbre(_ timbre: HapticTimbre) {
         let tone = HapticProfile.shared.resolve(timbre: timbre, strength: 6, dullness: 0.3, global: 6)
-        fireRaw(id: tone.actuationID, flags: 0, scale: tone.float0, time: tone.float1)
+        fireRaw(id: tone.actuationID, scale: tone.float0, time: tone.float1)
     }
 
     func dragFireTimbre(_ timbre: HapticTimbre) {
@@ -82,69 +69,38 @@ final class HapticLab: ObservableObject, @unchecked Sendable {
 
     // MARK: Strength curve 1→10
 
-    /// Resolve and fire once with the current (timbre, strength, dullness) — exactly matching the app's production path.
+    /// Resolve and fire once with the current (timbre, strength) — exactly matching the app's production path.
     func fireCurvePoint() {
-        let tone = HapticProfile.shared.resolve(timbre: curveTimbre, strength: curveStrength, dullness: curveDullness, global: 6)
-        fireRaw(id: tone.actuationID, flags: 0, scale: tone.float0, time: tone.float1)
+        let tone = HapticProfile.shared.resolve(timbre: curveTimbre, strength: curveStrength, dullness: 0.3, global: 6)
+        fireRaw(id: tone.actuationID, scale: tone.float0, time: tone.float1)
     }
 
     func dragFireCurve() { guard isAvailable, fireOnDrag, !running else { return }; fireCurvePoint() }
 
-    /// Play the 1→10 curve end-to-end (same timbre + same dullness, only strength increasing), to confirm
-    /// it's monotonic and distinguishable.
+    /// Play the 1→10 curve end-to-end (same timbre, only strength increasing), to confirm it's
+    /// monotonic and distinguishable on this machine.
     func previewCurve() {
         let items: [RawItem] = (1...HapticProfile.strengthLevels).map { s in
-            let tone = HapticProfile.shared.resolve(timbre: curveTimbre, strength: s, dullness: curveDullness, global: 6)
-            return RawItem(id: tone.actuationID, flags: 0, scale: tone.float0, time: tone.float1,
-                           label: L.t("lab.curve.now", s, Int(tone.actuationID)))
+            let tone = HapticProfile.shared.resolve(timbre: curveTimbre, strength: s, dullness: 0.3, global: 6)
+            return RawItem(id: tone.actuationID, scale: tone.float0, time: tone.float1,
+                           label: L.t("lab.curve.now", s))
         }
         runRawSequence(items, gapMs: 600)
-    }
-
-    // MARK: Actuation browser
-
-    /// Browser unit: fire once with a given timbre × level (scale=1.0), purely to feel each combination.
-    func fireActuation(_ id: Int32, _ strength: HapticStrength) {
-        fireRaw(id: id, flags: strength.flags, scale: 1.0, time: rawTimeScaleFloat)
-    }
-
-    // MARK: Raw probe
-
-    /// Fire once with the current (actuationID, flags, scale, timeScale).
-    func fireRawProbe() {
-        fireRaw(id: rawActuationID, flags: rawStrengthFlags, scale: Float(rawScale), time: Float(rawTimeScale))
-    }
-
-    /// Buzz-on-slide: called when dragging the raw probe sliders / changing ID·level (does not interrupt sequence playback).
-    func dragFireRaw() { guard isAvailable, fireOnDrag, !running else { return }; fireRawProbe() }
-
-    /// Play Light → Medium → Firm in turn (scale=1.0, reusing the current ID), to confirm the three levels differ end-to-end.
-    func sweepStrengthPresets() {
-        let id = rawActuationID, ts = Float(rawTimeScale)
-        let items = HapticStrength.allCases.map {
-            RawItem(id: id, flags: $0.flags, scale: 1.0, time: ts, label: L.t("lab.raw.now", Int(id), $0.label))
-        }
-        runRawSequence(items, gapMs: 760)
     }
 
     func stop() { _ = bump(); running = false; nowPlaying = "" }
 
     // MARK: - Internals
 
-    private var rawTimeScaleFloat: Float { Float(rawTimeScale) }
-    private struct RawItem { let id: Int32; let flags: UInt32; let scale: Float; let time: Float; let label: String }
+    private struct RawItem { let id: Int32; let scale: Float; let time: Float; let label: String }
 
-    /// Single trigger (cancels the in-progress sequence).
-    /// Coalesces rapid drag fires: a fast slider drag enqueues many closures, but only the newest
-    /// (matching `generation`) performs the heavy create→open→actuate→close; superseded ones bail before
-    /// touching the actuator. This keeps buzz-on-slide in step with the finger instead of piling up a
-    /// serial-queue backlog that lags further behind the longer you drag.
-    private func fireRaw(id: Int32, flags: UInt32, scale: Float, time: Float) {
+    /// Single trigger (cancels the in-progress sequence). Coalesces rapid drag fires: only the newest
+    /// queued closure performs the heavy create→open→actuate→close; superseded ones bail early.
+    private func fireRaw(id: Int32, scale: Float, time: Float) {
         let myGen = bump(); running = false; nowPlaying = ""
         queue.async { [weak self] in
             guard let self, !self.isStale(myGen) else { return }
-            let ret = self.engine.actuateRaw(actuationID: id, strengthFlags: flags, scale: scale, timeScale: time)
-            DispatchQueue.main.async { self.lastRet = ret }
+            _ = self.engine.actuateRaw(actuationID: id, strengthFlags: 0, scale: scale, timeScale: time)
         }
     }
 
@@ -157,8 +113,7 @@ final class HapticLab: ObservableObject, @unchecked Sendable {
             for it in items {
                 if self.isStale(myGen) { break }
                 DispatchQueue.main.async { self.nowPlaying = it.label }
-                let ret = self.engine.actuateRaw(actuationID: it.id, strengthFlags: it.flags, scale: it.scale, timeScale: it.time)
-                DispatchQueue.main.async { self.lastRet = ret }
+                _ = self.engine.actuateRaw(actuationID: it.id, strengthFlags: 0, scale: it.scale, timeScale: it.time)
                 usleep(useconds_t(gapMs * 1000))
             }
             DispatchQueue.main.async {
@@ -185,18 +140,16 @@ struct HapticLabView: View {
                 if !lab.isAvailable { unavailableNotice }
                 timbreSection
                 curveSection
-                browserSection
-                rawProbeSection
                 if lab.running { runningBar }
                 footer
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minWidth: 480, minHeight: 640)
+        .frame(minWidth: 460, minHeight: 480)
     }
 
-    // MARK: Title + diagnostics
+    // MARK: Title + status
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -204,21 +157,14 @@ struct HapticLabView: View {
             Text(L.t("lab.subtitle")).font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 14) {
-                diagChip(symbol: lab.isAvailable ? "checkmark.seal.fill" : "xmark.seal.fill",
-                         text: lab.isAvailable ? L.t("lab.diag.ready") : L.t("lab.diag.unavailable"),
-                         tint: lab.isAvailable ? .green : .orange)
-                diagChip(symbol: "cpu", text: "device \(lab.deviceDescription)", tint: .secondary)
-                diagChip(symbol: "number", text: String(format: "ret 0x%x", lab.lastRet),
-                         tint: lab.lastRet == 0 ? .secondary : .orange)
+                Label(lab.isAvailable ? L.t("lab.diag.ready") : L.t("lab.diag.unavailable"),
+                      systemImage: lab.isAvailable ? "checkmark.seal.fill" : "xmark.seal.fill")
+                    .foregroundStyle(lab.isAvailable ? .green : .orange)
+                    .font(.caption)
+                Toggle(isOn: $lab.fireOnDrag) { Text(L.t("lab.fireOnDrag")).font(.caption) }
+                    .toggleStyle(.switch).controlSize(.mini).fixedSize()
             }
-            .font(.caption)
-            Toggle(isOn: $lab.fireOnDrag) { Text(L.t("lab.fireOnDrag")).font(.caption) }
-                .toggleStyle(.switch).controlSize(.mini).fixedSize()
         }
-    }
-
-    private func diagChip(symbol: String, text: String, tint: Color) -> some View {
-        Label(text, systemImage: symbol).foregroundStyle(tint)
     }
 
     private var unavailableNotice: some View {
@@ -230,12 +176,16 @@ struct HapticLabView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    // MARK: Timbre family assignment (production)
+    // MARK: Timbre feel check
 
     private var timbreSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle(L.t("lab.timbre.title"), L.t("lab.timbre.hint"))
             ForEach(HapticTimbre.allCases) { t in timbreRow(t) }
+            if !isDefaultAssignment {
+                Button(L.t("lab.reset")) { profile.resetToDefault() }
+                    .controlSize(.small)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,22 +194,34 @@ struct HapticLabView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    private var isDefaultAssignment: Bool {
+        profile.softID == HapticTimbre.soft.defaultActuationID
+            && profile.crispID == HapticTimbre.crisp.defaultActuationID
+            && profile.buzzID == HapticTimbre.buzz.defaultActuationID
+    }
+
     private func timbreRow(_ t: HapticTimbre) -> some View {
         HStack(spacing: 10) {
-            Label(t.displayName, systemImage: t.symbol).frame(width: 120, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Label(t.displayName, systemImage: t.symbol)
+                Text(L.t("lab.timbre.desc." + t.rawValue)).font(.caption2).foregroundStyle(.secondary)
+            }
+            .frame(width: 190, alignment: .leading)
             Picker("", selection: Binding(
                 get: { profile.actuationID(for: t) },
                 set: { profile.setActuationID($0, for: t); lab.dragFireTimbre(t) })) {
-                ForEach(HapticLabCatalog.waveforms) { wf in Text("ID \(wf.id)").tag(wf.id) }
+                ForEach(HapticLabCatalog.waveforms) { wf in Text(wf.displayName).tag(wf.id) }
             }
-            .labelsHidden().frame(width: 96)
+            .labelsHidden().frame(width: 130)
+            .id("lab.timbre.\(t.rawValue).\(l10n.language.rawValue)")
             Spacer()
             Button { lab.fireTimbre(t) } label: { Image(systemName: "hand.tap.fill") }
                 .buttonStyle(.bordered).disabled(!lab.isAvailable)
+                .help(L.t("lab.try")).accessibilityLabel(L.t("lab.try"))
         }
     }
 
-    // MARK: Strength curve 1→10 (production)
+    // MARK: Strength curve 1→10
 
     private var curveSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -268,6 +230,7 @@ struct HapticLabView: View {
                 ForEach(HapticTimbre.allCases) { t in Text(t.displayName).tag(t) }
             }
             .pickerStyle(.segmented).labelsHidden()
+            .id("lab.curve.timbre.\(l10n.language.rawValue)")
 
             HStack(spacing: 10) {
                 Text(L.t("lab.curve.strength")).font(.caption).foregroundStyle(.secondary).frame(width: 96, alignment: .leading)
@@ -276,14 +239,8 @@ struct HapticLabView: View {
                 Text("\(lab.curveStrength)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 26, alignment: .trailing)
             }
             HStack(spacing: 10) {
-                Text(L.t("lab.curve.dullness")).font(.caption).foregroundStyle(.secondary).frame(width: 96, alignment: .leading)
-                Slider(value: $lab.curveDullness, in: 0...1, step: 0.05)
-                    .onChange(of: lab.curveDullness) { _ in lab.dragFireCurve() }
-                Text(String(format: "%.2f", lab.curveDullness)).font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
-            }
-            HStack(spacing: 10) {
                 Button { lab.fireCurvePoint() } label: {
-                    Label(L.t("lab.raw.fire"), systemImage: "hand.tap.fill").frame(maxWidth: .infinity)
+                    Label(L.t("lab.try"), systemImage: "hand.tap.fill").frame(maxWidth: .infinity)
                 }
                 .controlSize(.large).disabled(!lab.isAvailable)
                 Button { lab.previewCurve() } label: {
@@ -297,92 +254,6 @@ struct HapticLabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    // MARK: Actuation browser (all timbres × three levels)
-
-    private var browserSection: some View {
-        sectionCard {
-            sectionTitle(L.t("lab.browser.title"), L.t("lab.browser.hint"))
-            VStack(spacing: 8) {
-                ForEach(HapticLabCatalog.waveforms) { wf in browserRow(wf) }
-            }
-        }
-    }
-
-    private func browserRow(_ wf: LabWaveform) -> some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("ID \(wf.id)").font(.system(size: 12, weight: .semibold, design: .rounded))
-                Text(wf.displayName).font(.caption2).foregroundStyle(.secondary)
-            }
-            .frame(width: 96, alignment: .leading)
-            ForEach(HapticStrength.allCases) { st in
-                Button { lab.fireActuation(wf.id, st) } label: {
-                    Text(st.label).font(.caption).frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered).disabled(!lab.isAvailable)
-            }
-        }
-    }
-
-    // MARK: Raw actuation probe (low-level verification)
-
-    private var rawProbeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle(L.t("lab.raw.title"), L.t("lab.raw.hint"))
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L.t("lab.raw.id")).font(.caption).foregroundStyle(.secondary)
-                    Picker("", selection: $lab.rawActuationID) {
-                        ForEach(HapticLabCatalog.waveforms) { wf in Text("ID \(wf.id)").tag(wf.id) }
-                    }
-                    .labelsHidden().frame(width: 96)
-                    .onChange(of: lab.rawActuationID) { _ in lab.dragFireRaw() }
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L.t("lab.raw.strength")).font(.caption).foregroundStyle(.secondary)
-                    Picker("", selection: $lab.rawStrengthFlags) {
-                        Text(L.t("lab.raw.none")).tag(UInt32(0))
-                        Text("Light").tag(UInt32(0x1))
-                        Text("Medium").tag(UInt32(0x2))
-                        Text("Firm").tag(UInt32(0x4))
-                    }
-                    .pickerStyle(.segmented).labelsHidden()
-                    .id("lab.raw.flags.\(l10n.language.rawValue)")
-                    .onChange(of: lab.rawStrengthFlags) { _ in lab.dragFireRaw() }
-                }
-            }
-            sliderRow(L.t("lab.raw.scale"), value: $lab.rawScale) { lab.dragFireRaw() }
-            sliderRow(L.t("lab.raw.time"), value: $lab.rawTimeScale) { lab.dragFireRaw() }
-            HStack(spacing: 10) {
-                Button { lab.fireRawProbe() } label: {
-                    Label(L.t("lab.raw.fire"), systemImage: "hand.tap.fill").frame(maxWidth: .infinity)
-                }
-                .controlSize(.large).buttonStyle(.borderedProminent)
-                .disabled(!lab.isAvailable)
-                Button { lab.sweepStrengthPresets() } label: {
-                    Label(L.t("lab.raw.sweep"), systemImage: "chart.bar.fill").frame(maxWidth: .infinity)
-                }
-                .controlSize(.large)
-                .disabled(!lab.isAvailable || lab.running)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.green.opacity(0.08))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.green.opacity(0.35), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func sliderRow(_ title: String, value: Binding<Double>, onEdit: @escaping () -> Void = {}) -> some View {
-        HStack(spacing: 10) {
-            Text(title).font(.caption).foregroundStyle(.secondary).frame(width: 96, alignment: .leading)
-            Slider(value: value, in: 0...2, step: 0.05)
-                .onChange(of: value.wrappedValue) { _ in onEdit() }
-            Text(String(format: "%.2f", value.wrappedValue))
-                .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
-        }
     }
 
     // MARK: Running status bar + footer
@@ -404,14 +275,6 @@ struct HapticLabView: View {
     }
 
     // MARK: Helpers
-
-    private func sectionCard<C: View>(@ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 12) { content() }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
 
     private func sectionTitle(_ title: String, _ hint: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {

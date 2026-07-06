@@ -7,10 +7,42 @@ struct DayStat: Codable, Identifiable {
     var breaks: Int = 0
     var skips: Int = 0
     var postpones: Int = 0
-    var pomodoros: Int = 0
+    /// Completed work+rest cycles (only counted when a timed rest segment finishes).
+    /// Kept under the historical `pomodoros` JSON key for backward-compatible statistics files.
+    var cycles: Int = 0
+    /// Acknowledged reminders (gesture / hotkey / panel / stepped away) — the delivery signal.
+    var acks: Int = 0
+    /// Active seconds bucketed by hour of day (24 entries) — the today-rhythm band's density shading.
+    var activeByHour: [Int] = Array(repeating: 0, count: 24)
+    /// Minute-of-day (0…1439) of each real rest — the band's break dots (capped, see `recordBreak`).
+    var breakMinutes: [Int] = []
 
     var id: String { date }
     var activeMinutes: Int { activeSeconds / 60 }
+
+    private enum CodingKeys: String, CodingKey {
+        case date, activeSeconds, breaks, skips, postpones
+        case cycles = "pomodoros"
+        case acks, activeByHour, breakMinutes
+    }
+
+    init(date: String) { self.date = date }
+
+    /// Tolerant decoding: fields added over time default to 0 when absent, so older statistics
+    /// files keep loading unchanged.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date          = try c.decode(String.self, forKey: .date)
+        activeSeconds = try c.decodeIfPresent(Int.self, forKey: .activeSeconds) ?? 0
+        breaks        = try c.decodeIfPresent(Int.self, forKey: .breaks) ?? 0
+        skips         = try c.decodeIfPresent(Int.self, forKey: .skips) ?? 0
+        postpones     = try c.decodeIfPresent(Int.self, forKey: .postpones) ?? 0
+        cycles        = try c.decodeIfPresent(Int.self, forKey: .cycles) ?? 0
+        acks          = try c.decodeIfPresent(Int.self, forKey: .acks) ?? 0
+        let hours     = try c.decodeIfPresent([Int].self, forKey: .activeByHour) ?? []
+        activeByHour  = Array((hours + Array(repeating: 0, count: 24)).prefix(24))
+        breakMinutes  = try c.decodeIfPresent([Int].self, forKey: .breakMinutes) ?? []
+    }
 }
 
 /// Statistics persistence (a JSON file in Application Support), plus CSV export.
@@ -60,19 +92,39 @@ final class StatisticsStore {
 
     /// Called once per active second; throttled to disk (flushed once every 30 seconds).
     func addActiveSecond() {
-        mutateToday { $0.activeSeconds += 1 }
+        let hour = Calendar.current.component(.hour, from: Date())
+        mutateToday {
+            $0.activeSeconds += 1
+            if $0.activeByHour.indices.contains(hour) { $0.activeByHour[hour] += 1 }
+        }
         dirtyActiveSeconds += 1
         if dirtyActiveSeconds >= 30 { dirtyActiveSeconds = 0; save() }
     }
 
-    func recordBreak()    { mutateToday { $0.breaks += 1 };    save() }
+    func recordBreak() {
+        let now = Date()
+        let minute = Calendar.current.component(.hour, from: now) * 60
+                   + Calendar.current.component(.minute, from: now)
+        mutateToday {
+            $0.breaks += 1
+            if $0.breakMinutes.count < 96 { $0.breakMinutes.append(minute) }   // Sanity cap
+        }
+        save()
+    }
     func recordSkip()     { mutateToday { $0.skips += 1 };     save() }
     func recordPostpone() { mutateToday { $0.postpones += 1 }; save() }
-    func recordPomodoro() { mutateToday { $0.pomodoros += 1 }; save() }
+    func recordCycle()    { mutateToday { $0.cycles += 1 };    save() }
+    func recordAck()      { mutateToday { $0.acks += 1 };      save() }
 
     // MARK: - Queries
 
     func today() -> DayStat { days[Self.todayKey()] ?? DayStat(date: Self.todayKey()) }
+
+    /// Replace one day's record wholesale — used by the render-shot seeding (ephemeral store) and tests.
+    func importDay(_ stat: DayStat) {
+        days[stat.date] = stat
+        save()
+    }
 
     /// The last n days (including today), ascending by date, missing days zero-filled.
     func recent(_ n: Int) -> [DayStat] {
@@ -89,9 +141,9 @@ final class StatisticsStore {
     // MARK: - Export
 
     func exportCSV() -> String {
-        var lines = ["date,active_minutes,breaks,skips,postpones,pomodoros"]
+        var lines = ["date,active_minutes,breaks,skips,postpones,cycles,acks"]
         for stat in days.values.sorted(by: { $0.date < $1.date }) {
-            lines.append("\(stat.date),\(stat.activeMinutes),\(stat.breaks),\(stat.skips),\(stat.postpones),\(stat.pomodoros)")
+            lines.append("\(stat.date),\(stat.activeMinutes),\(stat.breaks),\(stat.skips),\(stat.postpones),\(stat.cycles),\(stat.acks)")
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -114,12 +166,12 @@ final class StatisticsStore {
     }
 
     /// Totals over the last n days.
-    func totals(_ n: Int) -> (activeMinutes: Int, breaks: Int, skips: Int, pomodoros: Int) {
+    func totals(_ n: Int) -> (activeMinutes: Int, breaks: Int, skips: Int, cycles: Int) {
         let days = recent(n)
         return (days.reduce(0) { $0 + $1.activeMinutes },
                 days.reduce(0) { $0 + $1.breaks },
                 days.reduce(0) { $0 + $1.skips },
-                days.reduce(0) { $0 + $1.pomodoros })
+                days.reduce(0) { $0 + $1.cycles })
     }
 
     // MARK: - Persistence

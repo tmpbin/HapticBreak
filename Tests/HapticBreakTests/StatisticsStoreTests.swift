@@ -21,17 +21,25 @@ final class StatisticsStoreTests: HBTestCase {
         try! data.write(to: url)
     }
 
+    private func day(offset: Int, breaks: Int) -> DayStat {
+        var d = DayStat(date: dayKey(offset: offset))
+        d.breaks = breaks
+        return d
+    }
+
     func testRecordCountsAccumulateForToday() {
         let store = makeStatsStore()
         store.recordBreak()
         store.recordSkip()
         store.recordPostpone()
-        store.recordPomodoro()
+        store.recordCycle()
+        store.recordAck()
         let today = store.today()
         XCTAssertEqual(today.breaks, 1)
         XCTAssertEqual(today.skips, 1)
         XCTAssertEqual(today.postpones, 1)
-        XCTAssertEqual(today.pomodoros, 1)
+        XCTAssertEqual(today.cycles, 1)
+        XCTAssertEqual(today.acks, 1)
     }
 
     func testActiveSecondsAccumulate() {
@@ -65,8 +73,68 @@ final class StatisticsStoreTests: HBTestCase {
         store.recordBreak()
         let csv = store.exportCSV()
         let lines = csv.split(separator: "\n")
-        XCTAssertEqual(lines.first, "date,active_minutes,breaks,skips,postpones,pomodoros")
-        XCTAssertTrue(csv.contains("\(dayKey(offset: 0)),0,1,0,0,0"), "contains today's row with correct counts")
+        XCTAssertEqual(lines.first, "date,active_minutes,breaks,skips,postpones,cycles,acks")
+        XCTAssertTrue(csv.contains("\(dayKey(offset: 0)),0,1,0,0,0,0"), "contains today's row with correct counts")
+    }
+
+    func testLegacyStatisticsFileDecodes() {
+        // Pre-ack-model files: `pomodoros` key, no `acks` / rhythm fields.
+        let url = makeTempStatsURL()
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let key = dayKey(offset: 0)
+        let legacyJSON = """
+        {"\(key)":{"date":"\(key)","activeSeconds":120,"breaks":3,"skips":1,"postpones":0,"pomodoros":2}}
+        """
+        try! legacyJSON.data(using: .utf8)!.write(to: url)
+        let store = StatisticsStore(fileURL: url)
+        let today = store.today()
+        XCTAssertEqual(today.cycles, 2, "legacy `pomodoros` reads back as cycles")
+        XCTAssertEqual(today.acks, 0, "missing field defaults to 0")
+        XCTAssertEqual(today.breaks, 3)
+        XCTAssertEqual(today.activeByHour, Array(repeating: 0, count: 24), "missing rhythm buckets zero-filled")
+        XCTAssertEqual(today.breakMinutes, [], "missing break minutes default to empty")
+    }
+
+    func testRhythmFieldsRecorded() {
+        let store = makeStatsStore()
+        let now = Date()
+        let minute = Calendar.current.component(.hour, from: now) * 60
+                   + Calendar.current.component(.minute, from: now)
+
+        for _ in 0..<5 { store.addActiveSecond() }
+        store.recordBreak()
+
+        let today = store.today()
+        // Hour-boundary tolerant: all five seconds land in (at most two adjacent) hour buckets.
+        XCTAssertEqual(today.activeByHour.reduce(0, +), 5, "every active second lands in an hour bucket")
+        XCTAssertGreaterThanOrEqual(today.activeByHour.max() ?? 0, 4)
+        XCTAssertEqual(today.breakMinutes.count, 1)
+        // Recording spans at most a minute boundary between the two component reads.
+        XCTAssertTrue(abs(today.breakMinutes[0] - minute) <= 1, "break minute ≈ minute-of-day at recording")
+    }
+
+    func testRhythmFieldsPersistRoundTrip() {
+        let url = makeTempStatsURL()
+        let store = StatisticsStore(fileURL: url)
+        store.addActiveSecond()
+        store.recordBreak()
+        store.flush()
+        let reloaded = StatisticsStore(fileURL: url)
+        XCTAssertEqual(reloaded.today().activeByHour.reduce(0, +), 1)
+        XCTAssertEqual(reloaded.today().breakMinutes.count, 1)
+    }
+
+    func testImportDayReplacesRecord() {
+        let store = makeStatsStore()
+        var stat = DayStat(date: StatisticsStore.todayKey())
+        stat.breaks = 7
+        stat.activeByHour[9] = 1800
+        stat.breakMinutes = [600, 720]
+        store.importDay(stat)
+        XCTAssertEqual(store.today().breaks, 7)
+        XCTAssertEqual(store.today().activeByHour[9], 1800)
+        XCTAssertEqual(store.today().breakMinutes, [600, 720])
     }
 
     func testCurrentStreakToday() {
@@ -79,9 +147,9 @@ final class StatisticsStoreTests: HBTestCase {
     func testCurrentStreakAcrossConsecutiveDays() {
         let url = makeTempStatsURL()
         writeStats([
-            DayStat(date: dayKey(offset: 0), breaks: 1),
-            DayStat(date: dayKey(offset: -1), breaks: 2),
-            DayStat(date: dayKey(offset: -2), breaks: 1),
+            day(offset: 0, breaks: 1),
+            day(offset: -1, breaks: 2),
+            day(offset: -2, breaks: 1),
         ], to: url)
         let store = StatisticsStore(fileURL: url)
         XCTAssertEqual(store.currentStreak(), 3, "today + two consecutive days → 3")
@@ -90,9 +158,9 @@ final class StatisticsStoreTests: HBTestCase {
     func testCurrentStreakBreaksOnGap() {
         let url = makeTempStatsURL()
         writeStats([
-            DayStat(date: dayKey(offset: 0), breaks: 1),
+            day(offset: 0, breaks: 1),
             // yesterday missing (gap)
-            DayStat(date: dayKey(offset: -2), breaks: 1),
+            day(offset: -2, breaks: 1),
         ], to: url)
         let store = StatisticsStore(fileURL: url)
         XCTAssertEqual(store.currentStreak(), 1, "gap yesterday → only today counts as the streak")

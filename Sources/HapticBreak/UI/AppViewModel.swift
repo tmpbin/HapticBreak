@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Today's rhythm snapshot for the panel band: work density per hour + real-rest dots.
+struct TodayRhythm: Equatable {
+    var activeByHour: [Int] = Array(repeating: 0, count: 24)
+    var breakMinutes: [Int] = []
+    var isEmpty: Bool { breakMinutes.isEmpty && activeByHour.allSatisfy { $0 == 0 } }
+}
+
 /// Bridge between the controller and SwiftUI (MVVM). Holds mirrored state and the action entry points.
 final class AppViewModel: ObservableObject {
 
@@ -19,7 +26,10 @@ final class AppViewModel: ObservableObject {
 
     var isPaused: Bool { pauseReason.isPaused }
     var progress: Double { total > 0 ? Double(total - remaining) / Double(total) : 0 }
-    var timeString: String { Self.format(remaining) }
+    /// While a reminder awaits acknowledgment there is no countdown — show a short invitation instead.
+    var timeString: String {
+        phase == .reminding ? L.t("status.breakShort") : Self.format(remaining)
+    }
 
     static func format(_ seconds: Int) -> String {
         let s = max(0, seconds)
@@ -36,7 +46,13 @@ final class AppViewModel: ObservableObject {
         case .focus:      return L.t("status.focusPaused")
         case .fullscreen: return L.t("status.fullscreenPaused")
         case .meeting:    return L.t("status.meetingPaused")
-        case .none:       return phase == .resting ? L.t("status.resting") : L.t("status.working")
+        case .scene:      return L.t("status.scenePaused")
+        case .none:
+            switch phase {
+            case .working:   return L.t("status.working")
+            case .reminding: return L.t("status.reminding")
+            case .resting:   return L.t("status.resting")
+            }
         }
     }
 
@@ -48,13 +64,23 @@ final class AppViewModel: ObservableObject {
         case .focus:      return "moon.fill"
         case .fullscreen: return "rectangle.inset.filled"
         case .meeting:    return "mic.fill"
-        case .none:       return phase == .resting ? "cup.and.saucer.fill" : "bolt.fill"
+        case .scene:      return "moon.stars.fill"
+        case .none:
+            switch phase {
+            case .working:   return "bolt.fill"
+            case .reminding: return "cup.and.saucer.fill"
+            case .resting:   return "cup.and.saucer.fill"
+            }
         }
     }
 
     var accentColor: Color {
         if isPaused { return pauseReason == .manual ? .orange : .gray }
-        return phase == .resting ? .green : .blue
+        switch phase {
+        case .working:   return .blue
+        case .reminding: return .orange
+        case .resting:   return .green
+        }
     }
 
     private static let clockFormatter: DateFormatter = {
@@ -72,12 +98,22 @@ final class AppViewModel: ObservableObject {
     /// Consecutive days of completed rests (streak). Cached and refreshed by the controller (on panel open /
     /// when a break is recorded), so the panel doesn't recompute it on every per-second render.
     @Published var streak: Int = 0
+    /// Real rests completed today (cached like `streak`; drives the panel's companion line).
+    @Published var todayBreaks: Int = 0
+    /// Today's rhythm band data (cached like `streak`).
+    @Published var todayRhythm: TodayRhythm = TodayRhythm()
+    /// Companion line for an active quiet scene (empty = no scene active).
+    @Published var sceneText: String = ""
 
     // MARK: - Actions
+    func startFocusScene()    { controller?.startFocusScene() }
+    func startQuietScene(_ kind: QuietScene) { controller?.startQuietScene(kind) }
+    func cancelScene()        { controller?.cancelQuietScene() }
     func togglePause()        { controller?.toggleManualPause() }
     func skip()               { controller?.skip() }
     func postpone()           { controller?.postpone() }
     func breakNow()           { controller?.breakNow() }
+    func acknowledge()        { controller?.acknowledge(.panel) }
     func ringImpact()         { controller?.ringImpact() }
     func testCurrentPattern() { controller?.testCurrentPattern() }
     func testPattern(_ p: HapticPattern) { controller?.testPattern(p) }
@@ -87,5 +123,6 @@ final class AppViewModel: ObservableObject {
     func openPatternEditor()  { controller?.openPatternEditor() }
     func openHapticLab()      { controller?.openHapticLab() }
     func openAbout()          { controller?.openAbout() }
+    func setHotKeyCapture(_ active: Bool) { controller?.setHotKeyCaptureActive(active) }
     func quit()               { NSApp.terminate(nil) }
 }

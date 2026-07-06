@@ -8,8 +8,9 @@
 
 到点时，它用触摸板在你手心轻轻拍一下。没有弹窗，没有声音，旁人毫无察觉——而你的心流，一次都不会被打断。
 
-<a href="README.md">English</a> · <b>简体中文</b>
+<a href="README.md">English</a> · <b>简体中文</b> · <a href="https://tmpbin.github.io/HapticBreak/">官网</a>
 
+![release](https://img.shields.io/github/v/release/tmpbin/HapticBreak?color=ff9500)
 ![platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple)
 ![swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)
 ![haptics](https://img.shields.io/badge/Taptic%20Engine-powered-ff2d55)
@@ -37,13 +38,14 @@
 
 一下震动只是一下震动，**而节奏，是一种感觉。** HapticBreak 把你的触摸板当成一件小小的乐器。
 
-- **35 种内置震动模式**，分三种气质——**基础 / 自然 / 节奏**——从一记轻拍，到滚滚雷声，再到带劲的鼓点。
+- **29 种内置震动模式**，分三种气质——**基础 / 自然 / 节奏**——从一记轻拍，到皮球落地的渐快弹跳，再到带劲的鼓点。
 - **靠手感就能认出来的旋律。** 有些节奏太经典，光凭手心里的拍子你就能哼出调：
   - **命运**——贝多芬第五：_哒-哒-哒-**当**_。
   - **跺脚拍手**——全场大合唱的 _咚-咚-**啪**_（We Will Rock You）。
+  - **铃儿响叮当**——_叮叮当、叮叮当_，直接敲进手心。
+  - **生日快乐** · **两只老虎** · **上课铃**（西敏寺钟声）· **秘密任务**——中美欧日都从小听到大。
   - **理发店七拍**——那段「哒哒·哒哒哒」，最后两下你会忍不住在心里补上。
-  - **暗黑进行曲**——反派登场，三记沉重的脚步。
-- **还能自己编。** 「震动模式编辑器」让你逐拍编排音色、强度与间隔，拖动即可试触，并以纯 JSON 导入导出（方便分享——或者让 AI 帮你写一段）。
+- **还能自己编。** 「震动模式编辑器」是一块节拍画布：点一拍即试听，上下拖动直接改强度——或点「**敲一段节奏**」，照着心里的调子连续点按：每次点按成为一拍，停顿多久就是间隔多久。模式以纯 JSON 导入导出（方便分享——或者让 AI 帮你写一段）。
 - **凭手感调校。** 每个模式都跑在三轴引擎上（音色 × 强度 × 钝感），内置的「震动实验室」让你把它标定到**这台** Mac 最舒服的手感。
 
 > 倒计时圆环也在合拍：它每秒释放一小簇能量；面板打开时，还可选一记极轻的震动「心跳」与之同步。
@@ -52,30 +54,11 @@
 
 ## 看一眼
 
-| 控制面板 · 能量按秒释放的倒计时环 | 设置 · 系统设置级的清爽分区 |
+| 控制面板 · 能量按秒释放的倒计时环 | 休息中 · 缓缓的呼吸光晕 |
 |:--:|:--:|
-| ![popover](assets/screenshots/popover-light.png) | ![settings](assets/screenshots/settings-light.png) |
+| ![popover](assets/screenshots/popover-light.png) | ![resting](assets/screenshots/popover-resting-light.png) |
 | **统计 · 诚实的休息 + 连续天数** | **模式编辑器 · 编出你自己的节奏** |
 | ![stats](assets/screenshots/statistics-light.png) | ![editor](assets/screenshots/editor-light.png) |
-
----
-
-## 功能特性
-
-- **定时震动提醒**——15 / 20 / 25 / 30 / 45 / 60 分钟可选，菜单栏实时倒计时。
-- **35 种内置模式 + 自定义编辑器**——逐拍编排强度与间隔，可试触、可保存。
-- **10 级强度**——基于双音源梯级标定，附「震动实验室」在真机上逐级校准到本机手感。
-- **智能暂停（都无需额外权限）：**
-  - 键鼠/触控板空闲自动暂停，长时间离开自动重置；
-  - 全屏应用（演示 / 视频 / 游戏）自动暂停；
-  - 专注 / 勿扰、会议（麦克风占用）自动暂停。
-- **番茄钟模式**——工作 / 休息循环（默认 25 + 5），自动计数。
-- **跳过 / 推迟**——随时跳过本次或推迟 N 分钟；反复跳过可选「升级助推」加强下次。
-- **诚实的统计**——提醒响了不算数，**你真的离开了**才记一次休息。今日时长 / 休息 / 跳过 / 番茄，最近 7 天柱状图、连续天数 streak、CSV 导出。
-- **全局快捷键**（无需辅助功能权限）：`⌃⌥Space` 暂停 · `⌃⌥S` 跳过 · `⌃⌥B` 立即震动。
-- **三语界面**——简体中文 / English / 日本語，跟随系统或手动即时切换。
-- **附加提醒（可选）**：屏幕轻闪、菜单栏图标高亮、系统提示音（14 种音色）。
-- **开机自启**、菜单栏常驻（无 Dock 图标），纯原生 Swift，资源占用极低。
 
 ---
 
@@ -86,16 +69,14 @@
 ### 推荐：Homebrew（连装带升级，一条命令）
 
 ```bash
-brew tap OWNER/tap
+brew tap tmpbin/tap
 brew install --cask --no-quarantine hapticbreak   # 未公证版本加 --no-quarantine 免「已损坏」提示
 brew upgrade --cask hapticbreak                    # 以后升级一条命令
 ```
 
-Cask 模板见 [`packaging/homebrew`](packaging/homebrew/Casks/hapticbreak.rb)。
-
 ### 或者下载 `.dmg` 手动放行一次
 
-未公证的 ad-hoc 版本首次运行会被 macOS 拦截（Apple Silicon 上表现为「已损坏，应移到废纸篓」——这不是应用坏了，只是 Gatekeeper 对下载的未公证应用的默认态度）。任选其一放行：
+未公证版本首次运行会被 macOS 拦截（Apple Silicon 上表现为「已损坏，应移到废纸篓」——这不是应用坏了，只是 Gatekeeper 对下载的未公证应用的默认态度）。任选其一放行：
 
 ```bash
 # 方式 A：去掉隔离属性（最干净，一次即可）
@@ -106,61 +87,55 @@ xattr -dr com.apple.quarantine /Applications/HapticBreak.app
 
 ---
 
-## 从源码构建
+## 60 秒上手
 
-依赖：Xcode 命令行工具（Swift 5.9+）。
+1. **启动。** 菜单栏出现一个小手图标和实时倒计时；首次运行控制面板会自己打开。
+2. **感受。** 手指搭在触摸板上，点一下**试震**——再掷一把**骰子**随机换个模式，或直接翻模式菜单（选中即预览）。拖强度滑杆，调到手心最舒服的那一档。
+3. **定节奏。** 选一个提醒间隔——默认 25 分钟，就很好。
+4. **关上面板，忘掉它。** 设置到此结束。开会、全屏演示、勿扰模式、临时走开……它都会自动暂停；而且每次自动暂停，面板都会告诉你原因和什么时候回来。
 
-```bash
-./build.sh release        # → build/HapticBreak.app（ad-hoc 签名 + 自动图标）
-./build.sh release dmg    # → 另出可分发的 build/HapticBreak-<版本>.dmg
-```
+### 提醒来了会发生什么
 
-版本号与签名身份可用环境变量注入（CI 即用此机制）：
-
-```bash
-HB_VERSION=1.2.0 \
-HB_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-./build.sh release dmg    # Developer ID 签名 + hardened runtime（可提交公证）
-```
-
-不装也能先感受一下震动：
-
-```bash
-swift run HapticBreak --rhythms     # 在触摸板上把每种节奏依次感受一遍
-swift run HapticBreak --hapticlab   # 打开真机标定台
-```
+- 触摸板完整震一遍你选的模式，之后每隔约 20 秒用一记短促轻点再提示；菜单栏图标持续橙色发光。
+- **想开始休息，怎么顺手怎么来：**
+  - 三指**三击**触摸板；
+  - 按 **`⌃⌥⏎`**；
+  - 点一下倒计时**圆环**（或「开始休息」按钮）；
+  - 或者干脆**起身走开**——离开 30 秒自动算数。
+- **现在不方便？** 点「跳过」或「+5 分」，或者继续干活——几次轻推没有回应后，它会静默自动推迟。绝不无休止纠缠。
+- 到点时你正打字打到一半？它会**等你敲完这一段**、出现自然停顿再震。
+- 统计是**诚实的**：提醒响了不算数，你真的离开了才记一次休息。
 
 ---
 
-## 发布与升级
+## 进阶玩法
 
-推送一个 `vX.Y.Z` 标签，[GitHub Actions 流水线](.github/workflows/release.yml) 会自动构建、跑测试、打包 `.dmg` + `.zip`，从 [`CHANGELOG.md`](CHANGELOG.md) 抽取对应版本段落作为发布说明，并创建 GitHub Release。
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-# → Actions 自动出 Release
-```
-
-在仓库里配好签名 Secret（Developer ID 证书 + Apple ID），**同一条**流水线会自动升级为 **Developer ID 签名 + 公证 + staple**，产出「下载即开、零提示」的版本——无需改一行代码。再配上升级签名密钥，它还会发布一份签名的升级源，已安装的用户便可在后台静默升级。应用内升级的一次性设置见 [`packaging/autoupdate/README.md`](packaging/autoupdate/README.md)。
+- **工作 / 休息循环**——设置 → 基本，把休息时长调到大于 0（例如 25 + 5）：确认提醒后进入休息倒计时，圆环变绿、化作缓缓的呼吸光晕，并轮换提示你伸展、远眺、喝水；完整循环自动计数。
+- **场景快捷**——面板里的「场景」菜单是会自己归位的临时决定：**专注 90 分钟**（本轮拉长，下轮自动回到原节奏）、**静音 1 小时**（临时开个会）、**今天到此为止**（明早自动回来）。不像裸暂停，没有「忘了恢复」这回事。
+- **一眼读懂今天**——面板里那条细带就是你的一天：色块深浅 = 每小时工作密度，绿点 = 真实休息，细线 = 现在。点它打开完整统计（7 天柱状图、连续天数、CSV 导出）。
+- **调教提醒的性格**——设置 → 高级：轻推间隔与上限、推迟时长、提前轻点预告、打字时等停顿，以及每一项自动暂停的开关。
+- **快捷键改成你的**——设置 → 高级 → 全局快捷键：点一下组合键、按下新的即可（默认 `⌃⌥Space` 暂停 · `⌃⌥S` 跳过 · `⌃⌥B` 立即震动 · `⌃⌥⏎` 开始休息）。无需辅助功能权限。
+- **编一段自己的节奏**——设置 → 高级 → 自定义震动模式：在录制板上敲出节奏，或在画布上逐拍编排，随手试触，纯 JSON 分享。
+- **标定到这台机器**——关于窗口 → 连点五次「致动器状态」，打开隐藏的**震动实验室**：确认三种音色在这台触摸板上手感对味（不对就换个备选手感），再把 1→10 强度整条试一遍。
+- **适配你的菜单栏**——图标 + 倒计时、仅图标、极简进度环三种样式；可选屏幕轻闪与系统提示音作为补充通道。
+- **三语界面**——简体中文 / English / 日本語，跟随系统或即时切换。
 
 ---
 
-## 自动化测试
+## 开发者
+
+全部纯 Swift——命令行即可构建、测试与试震：
 
 ```bash
-swift test                    # 计时状态机 / 诚实休息 / 圆环 / 统计 / 偏好 / 自定义模式
-scripts/release-check.sh      # 发布前门禁：构建 → 单测 → CLI 冒烟 → 界面走查 → 打包
+./build.sh release            # → build/HapticBreak.app（加 dmg 参数另出镜像）
+swift test                    # 单元测试
+scripts/release-check.sh      # 发布门禁：构建 → 单测 → CLI 冒烟 → 界面走查 → 打包
+
+swift run HapticBreak --presets    # 把 29 个内置模式依次感受一遍（可选强度：--presets 8）
+swift run HapticBreak --hapticlab  # 直接打开真机标定台
 ```
 
-二进制另内置多个自检入口，便于真机手动验收（均使用隔离 / 只读状态，绝不污染真实数据）：
-
-```bash
-.build/release/HapticBreak --selftest    # 震动：逐级触发强度曲线
-.build/release/HapticBreak --logictest   # 计时状态机：全部断言（含圆环扣减）
-.build/release/HapticBreak --checkenv    # 空闲 / 全屏 / Focus / 麦克风检测 + 统计读取（只读）
-.build/release/HapticBreak --demo        # UI 冒烟：实例化全部窗口并触发提醒
-```
+推送 `vX.Y.Z` 标签即触发[发布流水线](.github/workflows/release.yml)：测试、打包、从 [`CHANGELOG.md`](CHANGELOG.md) 抽取发布说明并创建 GitHub Release。配好签名与公证 Secret 后，同一条流水线产出「下载即开」的版本并支持应用内静默升级——设置说明见 [`packaging/autoupdate/README.md`](packaging/autoupdate/README.md)。
 
 ---
 
