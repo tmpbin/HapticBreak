@@ -28,7 +28,7 @@ cask "hapticbreak" do
   # 应用自带应用内升级：声明后 brew 不再与其抢更新。
   auto_updates true
 
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "HapticBreak.app"
 
