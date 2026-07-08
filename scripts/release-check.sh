@@ -21,8 +21,11 @@ for arg in "$@"; do
 done
 
 # Universal 构建 (--arch) 使用 Xcode build system，产物路径不同于 SPM 原生路径。
+# 该布局下裸二进制的 @rpath 指向 ../lib，找不到同目录的 Sparkle.framework（dyld 直接崩溃），
+# 冒烟步骤需通过 DYLD_FRAMEWORK_PATH 指回产物目录；原生路径框架与二进制同目录，无需处理。
 if [ "$ARCH_ARG" = "universal" ]; then
     BIN=".build/apple/Products/Release/HapticBreak"
+    export DYLD_FRAMEWORK_PATH="$PWD/.build/apple/Products/Release"
 else
     BIN=".build/release/HapticBreak"
 fi

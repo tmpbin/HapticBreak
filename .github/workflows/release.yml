@@ -100,8 +100,11 @@ jobs:
           chmod +x build.sh
           ./build.sh release dmg universal
 
+      # 跑打包后的 .app 内二进制而非 .build 裸产物：universal（Xcode build system）布局下
+      # 裸二进制的 @rpath 找不到 Sparkle.framework（dyld 崩溃）；.app 已嵌入框架并补了
+      # @executable_path/../Frameworks rpath，同时也顺带验证了打包产物本身可运行。
       - name: 冒烟测试（计时状态机逻辑自测）
-        run: .build/apple/Products/Release/HapticBreak --logictest
+        run: build/HapticBreak.app/Contents/MacOS/HapticBreak --logictest
 
       - name: 公证并 staple（配置了证书 + Apple ID 才执行）
         if: ${{ env.MACOS_CERTIFICATE_BASE64 != '' && env.APPLE_ID != '' }}
