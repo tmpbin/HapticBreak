@@ -20,6 +20,9 @@ final class AppViewModel: ObservableObject {
     /// Whether the control panel is visible. When collapsed, the ring stops all animation rendering,
     /// minimizing background resource usage.
     @Published var panelVisible: Bool = false
+    /// Flipped to `true` after several unanswered nudges to show the teaching hint card
+    /// (explaining triple-tap / step-away acknowledgment). Cleared when the phase leaves reminding.
+    @Published var showNudgeHint: Bool = false
 
     let settings = Settings.shared
     weak var controller: AppController?

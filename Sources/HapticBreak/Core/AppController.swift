@@ -284,27 +284,43 @@ final class AppController: NSObject, BreakTimerDelegate {
 
     // MARK: - BreakTimerDelegate
 
-    func breakTimerDidFire(_ timer: BreakTimer) {
-        // Initial nudge of the reminding phase: full pattern once, with the aux channels in sync.
+    /// The one announcement every nudge makes: full user preset with the aux channels in sync.
+    /// Initial fire and every follow-up go through here, so they can never drift apart.
+    private func playFullReminder() {
         player.play(settings.selectedPattern, strength: settings.strength) { [weak self] in
             guard let self else { return }
             if self.settings.soundEnabled { self.aux.playSound(named: self.settings.soundName) }
             if self.settings.auxFlashScreen { self.aux.flashScreen() }
         }
-        // Do not count a rest the moment the reminder sounds — wait until the user actually steps away,
-        // confirmed by restConfirmer (honest statistics).
-        restConfirmer.didFire()
         menuBar.pulse()
     }
 
-    /// Reminding follow-up nudge: a fixed, deliberately brief single tap — long enough to supervise,
-    /// short enough never to interrupt. The menu bar stays highlighted as the visual channel.
-    func breakTimerPulse(_ timer: BreakTimer) {
-        player.play(.renudge, strength: settings.strength)
+    func breakTimerDidFire(_ timer: BreakTimer) {
+        playFullReminder()
+        // Do not count a rest the moment the reminder sounds — wait until the user actually steps away,
+        // confirmed by restConfirmer (honest statistics).
+        restConfirmer.didFire()
     }
 
-    /// Reminding cap reached: silently postponed. Nothing to play — staying quiet is the point.
-    func breakTimerDidAutoPostpone(_ timer: BreakTimer) {}
+    /// Reminding follow-up nudge: replays the full user preset identically to the initial fire.
+    func breakTimerPulse(_ timer: BreakTimer) {
+        playFullReminder()
+    }
+
+    /// After several unanswered nudges, mark the teaching hint as visible and gently surface the
+    /// panel. Uses `showPopoverPassive()` so the user's front app keeps focus — no key stealing.
+    func breakTimerShouldShowHint(_ timer: BreakTimer) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.viewModel.showNudgeHint = true
+            self.menuBar.showPopoverPassive()
+        }
+    }
+
+    /// Reminding cap reached without acknowledgment → silently auto-postpone.
+    func breakTimerDidAutoPostpone(_ timer: BreakTimer) {
+        menuBar.pulse()
+    }
 
     func breakTimerDidAcknowledge(_ timer: BreakTimer, method: AckMethod) {
         stats.recordAck()
@@ -338,6 +354,7 @@ final class AppController: NSObject, BreakTimerDelegate {
         if viewModel.total       != timer.total       { viewModel.total       = timer.total }
         if viewModel.phase       != timer.phase       {
             viewModel.phase = timer.phase
+            if timer.phase != .reminding { viewModel.showNudgeHint = false }
             updateGestureMonitor()
         }
         if viewModel.pauseReason != timer.pauseReason { viewModel.pauseReason = timer.pauseReason }

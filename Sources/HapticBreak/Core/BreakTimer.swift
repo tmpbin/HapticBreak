@@ -29,9 +29,13 @@ enum AckMethod {
 protocol BreakTimerDelegate: AnyObject {
     /// Work segment ended: the reminder fires (first nudge of the reminding phase).
     func breakTimerDidFire(_ timer: BreakTimer)
-    /// Reminding phase: a gentle follow-up nudge (the reminder hasn't been acknowledged yet).
+    /// Reminding phase: a follow-up nudge (the reminder hasn't been acknowledged yet).
+    /// Every nudge replays the full user preset identically.
     func breakTimerPulse(_ timer: BreakTimer)
-    /// Reminding phase hit its nudge cap without acknowledgment → silently auto-postponed.
+    /// Unanswered nudges reached `min(3, remindPulseMax)`: show a teaching hint so the user
+    /// learns how to acknowledge. Called once per reminding cycle.
+    func breakTimerShouldShowHint(_ timer: BreakTimer)
+    /// Reminding phase hit its nudge cap without acknowledgment → auto-postponed.
     func breakTimerDidAutoPostpone(_ timer: BreakTimer)
     /// The reminding phase was acknowledged (explicitly or by stepping away).
     func breakTimerDidAcknowledge(_ timer: BreakTimer, method: AckMethod)
@@ -71,6 +75,7 @@ final class BreakTimer {
     private var remindingSeconds = 0         // Seconds elapsed in the reminding phase (pause-aware)
     private var nextPulseAt = 0              // remindingSeconds threshold for the next nudge
     private var pulseDeferSeconds = 0        // Typing-aware defer applied to each individual nudge
+    private var hintShown = false
 
     private let typingPauseThreshold: TimeInterval = 1.5
     private let maxDeferSeconds = 45
@@ -95,6 +100,7 @@ final class BreakTimer {
         remindingSeconds = 0
         nextPulseAt = 0
         pulseDeferSeconds = 0
+        hintShown = false
     }
 
     // MARK: - Configuration
@@ -198,7 +204,8 @@ final class BreakTimer {
     }
 
     /// One reminding-phase second: implicit acknowledgment when the user actually steps away;
-    /// otherwise emit typing-aware nudges every `remindPulseSeconds`, auto-postponing at the cap.
+    /// otherwise replay the full user preset every `remindPulseSeconds`, auto-postponing at the cap.
+    /// The teaching hint fires once per cycle, on the nudge that reaches `min(3, cap)`.
     private func tickReminding(idleSeconds: TimeInterval) {
         if idleSeconds >= ackIdleThreshold {
             completeAcknowledge(.stepAway)
@@ -206,20 +213,31 @@ final class BreakTimer {
         }
         remindingSeconds += 1
         guard remindingSeconds >= nextPulseAt else { return }
-        // Typing-aware defer per nudge: never buzz mid-typing; wait for a natural pause (bounded).
         if settings.typingAwareDefer, idleSeconds < typingPauseThreshold,
            pulseDeferSeconds < maxDeferSeconds {
             pulseDeferSeconds += 1
             return
         }
         pulseDeferSeconds = 0
-        if pulsesFired >= max(1, settings.remindPulseMax) {
+        let cap = max(1, settings.remindPulseMax)
+        if pulsesFired >= cap {
             autoPostpone()
         } else {
             pulsesFired += 1
-            nextPulseAt = remindingSeconds + max(10, settings.remindPulseSeconds)
+            nextPulseAt = remindingSeconds + max(10, settings.effectivePulseSeconds)
             delegate?.breakTimerPulse(self)
+            maybeShowHint()
         }
+    }
+
+    /// Teaching hint: fire once per reminding cycle, on the nudge that reaches `min(3, cap)` —
+    /// the cap bound guarantees the hint still appears at the *last* nudge when the user has
+    /// lowered `remindPulseMax` below 3 (including 1, where the initial fire is the only nudge).
+    private func maybeShowHint() {
+        let cap = max(1, settings.remindPulseMax)
+        guard !hintShown, pulsesFired >= min(3, cap) else { return }
+        hintShown = true
+        delegate?.breakTimerShouldShowHint(self)
     }
 
     private func handleExpiry() {
@@ -229,8 +247,9 @@ final class BreakTimer {
             phase = .reminding
             configureForCurrentPhase(reset: true)
             pulsesFired = 1
-            nextPulseAt = max(10, settings.remindPulseSeconds)
+            nextPulseAt = max(10, settings.effectivePulseSeconds)
             delegate?.breakTimerDidFire(self)
+            maybeShowHint()   // cap == 1: the initial fire is the only nudge this cycle
         } else {
             resetCycleFlags()
             delegate?.breakTimerDidFinishRest(self)

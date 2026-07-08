@@ -11,6 +11,37 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-09
+
+提醒机制大幅简化：到点后就用你选好的「震动 + 声音 + 屏幕闪」原样重复提醒——直觉、一致、零学习成本。
+
+### Changed
+- **提醒不再分"首次完整 / 后续轻点 / 渐进加强"**：每次 nudge 都完整重放用户选定的 preset
+  （震动模式 + 声音 + 屏幕闪），行为完全一致，不再有 escalation 概念。
+- **教学提示（三指轻敲引导）被动弹窗**：不再 activate 应用或抢走键盘焦点，用户正在
+  打字时弹窗不会干扰输入。
+- **脉冲间隔自适应模式时长**：当用户录制的自定义模式超过设定间隔时，自动延长间隔
+  到 `ceil(duration) + 1` 秒，模式不再被截断。
+- **教学提示触发阈值与 nudge 上限关联**：`min(3, cap)` 保证即使 nudge 上限设为 1–2 次
+  也能在最后一次 nudge 时弹出引导卡片（上限为 1 时随首次提醒弹出）。
+- **设置页说明文字动态化**：脚注中的重复间隔和提醒通道随实际配置实时显示。
+
+### Fixed
+- **录制暂停/恢复数据损坏**：暂停后继续录制不再产生 0ms gap 或计时跳变；试听回放
+  也走同一套暂停记账，回放时长不再计入录制时钟或下一拍间隙。
+- **试听回放不终止**：关闭编辑器或清空录制现在正确终止后台回放循环；回放进行中
+  暂停/试听按钮禁用，避免状态互相踩踏。
+- **录制中关窗后状态残留**：编辑器窗口复用会保留视图状态，现在关窗即结束录制会话，
+  重新打开不再出现按键与时钟失灵的"假录制中"界面。
+- **`@State` 跨线程竞争**：回放循环的取消逻辑改用 `NSLock` 保护的 `PlaybackToken`，
+  消除 `@State` 在后台线程的未同步访问。
+- **autoPostpone 的 pulse 视觉信号被吞**：菜单栏红色脉冲不再被同一 tick 的
+  `stateChanged` 刷新（含 `stopFlash` 直写）立即清除（保护窗口 0.8s）。
+- 测试目标 `CountingDelegate` 协议适配、`SettingsTests` 默认值断言修正。
+
+### Removed
+- 内部 `renudge` 模式：提醒统一为完整重放用户 preset 后已无引用，删除死代码。
+
 ## [1.0.2] - 2026-07-06
 
 产品定性为 **Beta 公测版**（关于窗口、README 与官网同步标注）。
@@ -102,7 +133,8 @@
 - 独立分发（非 App Store）：`build.sh` 支持版本注入与可选 Developer ID 签名 / 公证；
   GitHub Actions 推送 tag 自动构建、按本更新日志生成 Release（`.dmg` + `.zip`）。
 
-[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tmpbin/HapticBreak/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/tmpbin/HapticBreak/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/tmpbin/HapticBreak/releases/tag/v1.0.1
 [1.0.0]: https://github.com/tmpbin/HapticBreak/commits/main

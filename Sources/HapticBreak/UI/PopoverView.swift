@@ -51,7 +51,9 @@ struct PopoverView: View {
 
             actionRow
 
-            if !settings.hasSeenPanelIntro {
+            if viewModel.showNudgeHint {
+                nudgeHintCard
+            } else if !settings.hasSeenPanelIntro {
                 Label(L.t("popover.firstIntro"), systemImage: "hand.wave.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -242,6 +244,21 @@ struct PopoverView: View {
         .contentShape(Rectangle())
         .onTapGesture { viewModel.openStatistics() }
         .help(L.t("help.openStats"))
+    }
+
+    /// Teaching hint card: pops up after several unanswered nudges to teach the user how to acknowledge.
+    private var nudgeHintCard: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(L.t("popover.nudgeHint.title"), systemImage: "hand.raised.fingers.spread.fill")
+                .font(.caption.bold())
+            Text(L.t("popover.nudgeHint.body"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 8).padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+            .fill(Color.orange.opacity(0.12)))
     }
 
     /// While reminding, the primary action becomes "Start break" (acknowledge); otherwise pause/resume.

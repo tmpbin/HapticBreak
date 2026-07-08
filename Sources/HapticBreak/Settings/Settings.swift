@@ -118,6 +118,12 @@ final class Settings: ObservableObject {
         pattern(for: selectedPatternID) ?? .heartbeat
     }
 
+    /// Effective pulse interval: at least as long as the selected pattern's duration + 1 s buffer,
+    /// so a long custom pattern always finishes before the next nudge starts.
+    var effectivePulseSeconds: Int {
+        max(remindPulseSeconds, Int(ceil(selectedPattern.estimatedDuration)) + 1)
+    }
+
     var headsUpPattern: HapticPattern { pattern(for: headsUpPatternID) ?? .gentle }
     var finishPattern: HapticPattern { pattern(for: finishPatternID) ?? .gentle }
 
@@ -153,8 +159,8 @@ final class Settings: ObservableObject {
         static let finishPattern = HapticPattern.ramp.id
         static let strength = 6
         static let postpone = 5
-        static let pulseSeconds = 20
-        static let pulseMax = 4
+        static let pulseSeconds = 10
+        static let pulseMax = 6
         static let ackGesture = true
         static let typingDefer = true
         static let headsUp = true

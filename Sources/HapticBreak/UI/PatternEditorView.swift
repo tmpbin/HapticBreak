@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Thread-safe cancellation token for background playback loops.
+private final class PlaybackToken {
+    private var _cancelled = false
+    private let lock = NSLock()
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return _cancelled }
+    func cancel() { lock.lock(); _cancelled = true; lock.unlock() }
+}
+
 /// Pattern editor, built around direct manipulation so a first-time user can compose by feel:
 /// - **Canvas**: every beat is a bar — tap to select & preview, drag vertically to set strength.
 /// - **Tap a rhythm**: literally tap the rhythm you have in mind; the gaps are captured for you.
@@ -23,6 +31,13 @@ struct PatternEditorView: View {
     @State private var recordedSteps: [HapticStep] = []
     @State private var lastTapAt: Date?
     @State private var keyMonitor: Any?
+    @State private var recordPaused = false
+    @State private var recordStartDate: Date?
+    @State private var recordElapsed: TimeInterval = 0
+    @State private var elapsedTimer: Timer?
+    @State private var pauseStartDate: Date?
+    @State private var playbackHighlight: Int?
+    @State private var activePlaybackToken: PlaybackToken?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -39,6 +54,10 @@ struct PatternEditorView: View {
         }
         .frame(minWidth: 660, maxWidth: .infinity, minHeight: 540, maxHeight: .infinity)
         .sheet(isPresented: $showFormatHelp) { formatHelpSheet }
+        // The editor window is cached and reused (WindowManager.present), so @State survives a
+        // close/reopen. Tear down the whole recording session here — otherwise the window reopens
+        // in a dead "recording" state whose key monitor and clock are gone.
+        .onDisappear { stopRecording() }
     }
 
     // MARK: - Header
@@ -163,6 +182,8 @@ struct PatternEditorView: View {
                 }
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture { resignTextFocus() }
     }
 
     // MARK: - Canvas (tap to select & preview, drag vertically for strength)
@@ -170,7 +191,7 @@ struct PatternEditorView: View {
     private static let canvasHeight: CGFloat = 132
 
     private var canvas: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
             HStack(alignment: .bottom, spacing: 0) {
                 ForEach(Array(draft.steps.enumerated()), id: \.element.id) { index, step in
                     BeatBar(step: step,
@@ -305,44 +326,229 @@ struct PatternEditorView: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            recordCanvas
+
             HStack(spacing: 12) {
                 ForEach(Self.drums, id: \.key) { drum in
                     drumPad(drum.timbre, key: drum.key)
                 }
             }
+            .opacity(recordPaused ? 0.4 : 1)
+            .allowsHitTesting(!recordPaused)
 
-            HStack {
-                Button(L.t("btn.cancel")) { stopRecording() }
-                Text(recordedSteps.isEmpty ? " " : L.t("editor.steps", recordedSteps.count))
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    finishRecording()
-                } label: { Label(L.t("editor.recordUse", recordedSteps.count), systemImage: "checkmark") }
-                .buttonStyle(.borderedProminent)
-                .disabled(recordedSteps.count < 2)
+            recordTransportBar
+        }
+        .onDisappear { removeKeyMonitor(); stopElapsedTimer() }
+    }
+
+    // MARK: - Record canvas (column bars + timeline)
+
+    private static let recordCanvasHeight: CGFloat = 100
+
+    private var recordCanvas: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            recordStatusBar
+            if recordedSteps.isEmpty {
+                recordEmptyPlaceholder
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        recordBarsWithTimeline
+                    }
+                    .onChange(of: recordedSteps.count) { _ in
+                        if let lastID = recordedSteps.last?.id {
+                            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(lastID, anchor: .trailing) }
+                        }
+                    }
+                }
             }
         }
-        .onDisappear { removeKeyMonitor() }
+        .frame(maxWidth: .infinity)
+        .background(Theme.neutralFill)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
     }
+
+    private var recordStatusBar: some View {
+        HStack(spacing: 8) {
+            Circle().fill(recording && !recordPaused ? Color.red : Color.gray)
+                .frame(width: 7, height: 7)
+                .overlay(Circle().stroke(Color.red.opacity(recording && !recordPaused ? 0.4 : 0), lineWidth: 2)
+                    .scaleEffect(recording && !recordPaused ? 1.6 : 1)
+                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: recording && !recordPaused))
+            Text(recordPaused ? L.t("editor.rec.paused") : L.t("editor.rec.recording"))
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(recording && !recordPaused ? .red : .secondary)
+            Spacer()
+            Text(Self.formatElapsed(recordElapsed))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text(L.t("editor.steps", recordedSteps.count))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+    }
+
+    private var recordEmptyPlaceholder: some View {
+        Text(L.t("editor.rec.empty"))
+            .font(.caption).foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, minHeight: Self.recordCanvasHeight)
+    }
+
+    private var recordBarsWithTimeline: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .bottom, spacing: 0) {
+                ForEach(Array(recordedSteps.enumerated()), id: \.element.id) { index, step in
+                    recordBar(step: step, index: index)
+                    if index < recordedSteps.count - 1 {
+                        recordGapIndicator(gapMs: step.gapMsAfter)
+                    }
+                }
+            }
+            .frame(height: Self.recordCanvasHeight, alignment: .bottom)
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+
+            recordTimeline
+        }
+    }
+
+    private func recordBar(step: HapticStep, index: Int) -> some View {
+        let color = timbreColor(step.timbre)
+        let barHeight: CGFloat = 12 + CGFloat(step.strength) * (Self.recordCanvasHeight - 18) / 10.0
+        let highlighted = playbackHighlight == index
+        return VStack(spacing: 2) {
+            Spacer(minLength: 0)
+            Text("\(step.strength)")
+                .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                .foregroundStyle(color.opacity(0.8))
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(color.opacity(highlighted ? 0.85 : 0.45))
+                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(color, lineWidth: highlighted ? 2 : 0.8))
+                .frame(height: barHeight)
+        }
+        .frame(width: 20)
+        .id(step.id)
+    }
+
+    private func recordGapIndicator(gapMs: Int) -> some View {
+        let width = max(16, min(48, CGFloat(gapMs) / 14))
+        return VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            Text("\(gapMs)")
+                .font(.system(size: 7).monospacedDigit())
+                .foregroundStyle(.secondary.opacity(0.6))
+                .lineLimit(1)
+                .frame(width: width)
+                .padding(.bottom, 2)
+        }
+    }
+
+    private var recordTimeline: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
+                if !recordedSteps.isEmpty {
+                    let total = recordedSteps.dropLast().reduce(0) { $0 + $1.gapMsAfter }
+                    if total > 0 {
+                        let marks = stride(from: 500, through: total, by: 500)
+                        ForEach(Array(marks.enumerated()), id: \.offset) { _, ms in
+                            let x = CGFloat(ms) / CGFloat(total) * (w - 20) + 10
+                            VStack(spacing: 1) {
+                                Rectangle().fill(Color.secondary.opacity(0.3)).frame(width: 1, height: ms % 1000 == 0 ? 6 : 3)
+                                if ms % 1000 == 0 {
+                                    Text(String(format: "%.0fs", Double(ms) / 1000))
+                                        .font(.system(size: 7).monospacedDigit())
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .position(x: x, y: 8)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(height: 20)
+        .padding(.horizontal, 4)
+    }
+
+    private static func formatElapsed(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        let ms = Int((t - Double(s)) * 10)
+        return String(format: "%d:%02d.%d", s / 60, s % 60, ms)
+    }
+
+    // MARK: - Transport bar (clear / pause / play / cancel / use)
+
+    private var recordTransportBar: some View {
+        HStack(spacing: 8) {
+            Button {
+                clearRecording()
+            } label: {
+                Label(L.t("editor.rec.clear"), systemImage: "trash")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
+            .disabled(recordedSteps.isEmpty)
+
+            Button {
+                toggleRecordPause()
+            } label: {
+                Label(recordPaused ? L.t("editor.rec.resume") : L.t("editor.rec.pause"),
+                      systemImage: recordPaused ? "record.circle" : "pause.fill")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
+            .disabled(activePlaybackToken != nil)
+
+            Button {
+                playbackRecorded()
+            } label: {
+                Label(L.t("editor.rec.play"), systemImage: "play.fill")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
+            .disabled(recordedSteps.count < 2 || activePlaybackToken != nil)
+
+            Button {
+                clearRecording()
+            } label: {
+                Label(L.t("editor.rec.rerecord"), systemImage: "arrow.counterclockwise")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
+            .disabled(recordedSteps.isEmpty)
+
+            Spacer()
+
+            Button(L.t("btn.cancel")) { stopRecording() }
+                .controlSize(.small)
+
+            Button {
+                finishRecording()
+            } label: { Label(L.t("editor.recordUse", recordedSteps.count), systemImage: "checkmark") }
+            .buttonStyle(.borderedProminent).controlSize(.small)
+            .disabled(recordedSteps.count < 2)
+        }
+    }
+
+    // MARK: - Drum pad
 
     private func drumPad(_ timbre: HapticTimbre, key: String) -> some View {
         let color = timbreColor(timbre)
         return Button {
             recordTap(timbre)
         } label: {
-            VStack(spacing: 6) {
-                Image(systemName: timbre.symbol).font(.system(size: 26))
+            HStack(spacing: 8) {
+                Image(systemName: timbre.symbol).font(.system(size: 20))
                 Text(timbre.displayName).font(.callout)
                 Text(key)
                     .font(.caption.weight(.semibold).monospaced())
-                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Theme.neutralFill)
-                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
             }
-            .frame(maxWidth: .infinity, minHeight: 140)
+            .frame(maxWidth: .infinity, minHeight: 56)
         }
         .buttonStyle(.plain)
         .foregroundStyle(color)
@@ -355,21 +561,119 @@ struct PatternEditorView: View {
     private func startRecording() {
         recordedSteps = []
         lastTapAt = nil
+        recordPaused = false
+        pauseStartDate = nil
+        recordElapsed = 0
+        recordStartDate = Date()
         recording = true
+        resignTextFocus()
         installKeyMonitor()
+        startElapsedTimer()
     }
 
     private func stopRecording() {
         recording = false
+        stopPlayback()
+        recordPaused = false
+        pauseStartDate = nil
+        stopElapsedTimer()
         removeKeyMonitor()
     }
 
-    /// While recording, J/K/L play the drums. Keys are only captured when no text field is being
-    /// edited, so typing a pattern name never triggers beats.
+    private func resignTextFocus() {
+        DispatchQueue.main.async {
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        }
+    }
+
+    private func startElapsedTimer() {
+        stopElapsedTimer()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            guard recording, !recordPaused, let start = recordStartDate else { return }
+            recordElapsed = Date().timeIntervalSince(start)
+        }
+    }
+
+    private func stopElapsedTimer() {
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+    }
+
+    private func toggleRecordPause() {
+        setRecordPaused(!recordPaused)
+    }
+
+    /// Single entry point for pausing/resuming the recording clock. Every pause — manual or the
+    /// implicit one during audition playback — books its span here, so on resume the wall-clock
+    /// anchors (recordStartDate, lastTapAt) shift forward and paused time never leaks into the
+    /// elapsed readout or the next tap's gap.
+    private func setRecordPaused(_ paused: Bool) {
+        guard paused != recordPaused else { return }
+        recordPaused = paused
+        if paused {
+            pauseStartDate = Date()
+        } else if let pauseStart = pauseStartDate {
+            let pauseDuration = Date().timeIntervalSince(pauseStart)
+            if let start = recordStartDate {
+                recordStartDate = start.addingTimeInterval(pauseDuration)
+            }
+            if let tap = lastTapAt {
+                lastTapAt = tap.addingTimeInterval(pauseDuration)
+            }
+            pauseStartDate = nil
+        }
+    }
+
+    private func clearRecording() {
+        stopPlayback()
+        recordedSteps = []
+        lastTapAt = nil
+        recordElapsed = 0
+        recordStartDate = Date()
+        resignTextFocus()
+    }
+
+    private func playbackRecorded() {
+        guard recordedSteps.count >= 2 else { return }
+        stopPlayback()
+        let token = PlaybackToken()
+        activePlaybackToken = token
+        let steps = recordedSteps
+        let vm = viewModel
+        setRecordPaused(true)
+
+        DispatchQueue.global(qos: .userInteractive).async {
+            for (i, step) in steps.enumerated() {
+                if token.isCancelled { return }
+                DispatchQueue.main.async { self.playbackHighlight = i }
+                vm.testStep(step)
+                if i < steps.count - 1 {
+                    usleep(useconds_t(step.gapMsAfter * 1000))
+                }
+            }
+            DispatchQueue.main.async {
+                guard !token.isCancelled else { return }
+                self.playbackHighlight = nil
+                self.setRecordPaused(false)
+                self.activePlaybackToken = nil
+            }
+        }
+    }
+
+    private func stopPlayback() {
+        activePlaybackToken?.cancel()
+        activePlaybackToken = nil
+        playbackHighlight = nil
+        setRecordPaused(false)
+    }
+
+    /// While recording, J/K/L play the drums. The first-responder guard prevents
+    /// accidental triggers when a text field is focused, but we also explicitly resign
+    /// focus on record-start so the title field doesn't eat keys.
     private func installKeyMonitor() {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard recording,
+            guard recording, !recordPaused,
                   !(NSApp.keyWindow?.firstResponder is NSTextView),
                   let chars = event.charactersIgnoringModifiers?.uppercased(),
                   let drum = Self.drums.first(where: { $0.key == chars })

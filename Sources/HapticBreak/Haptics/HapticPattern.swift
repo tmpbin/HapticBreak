@@ -286,13 +286,6 @@ struct HapticPattern: Codable, Identifiable, Hashable {
         steps: [s(.buzz, 9, 0.6, 700), s(.buzz, 9, 0.6, 700), s(.crisp, 7, 0.25, 180), s(.crisp, 7, 0.25, 420),
                 s(.buzz, 9, 0.6, 700), s(.buzz, 9, 0.6, 700), s(.crisp, 7, 0.25, 180), s(.crisp, 7, 0.25, 0)], isBuiltin: true)
 
-    // MARK: - Internal (not user-selectable): fixed short cue for the reminding-phase re-nudge —
-    // deliberately brief so unacknowledged reminders supervise without interrupting.
-
-    static let renudge = HapticPattern(
-        id: "internal.renudge", name: "Re-nudge", symbol: "hand.tap",
-        steps: [s(.crisp, 7, 0.3, 0)], isBuiltin: true)
-
     // MARK: - Aggregation / categorization
 
     static let natureIDs: Set<String> = [

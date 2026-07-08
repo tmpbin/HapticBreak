@@ -24,6 +24,15 @@ struct SettingsView: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
     }
 
+    /// Dynamically lists the active reminder channels (haptics is always on; sound and screen flash
+    /// depend on their respective settings toggles).
+    private var activeChannelsSummary: String {
+        var parts = [L.t("settings.section.haptic")]
+        if settings.soundEnabled { parts.append(L.t("settings.soundName")) }
+        if settings.auxFlashScreen { parts.append(L.t("label.screenFlash")) }
+        return parts.joined(separator: " + ")
+    }
+
     /// One shortcut recorder row: rejects combos already bound to another action and suspends the
     /// global hotkeys during capture (so the current combos can be re-recorded).
     @ViewBuilder
@@ -90,7 +99,7 @@ struct SettingsView: View {
             } header: {
                 Text(L.t("settings.section.cycle"))
             } footer: {
-                Text(L.t("settings.cycleFooter"))
+                Text(L.t("settings.cycleFooter", settings.effectivePulseSeconds, activeChannelsSummary))
                     .font(.caption).foregroundStyle(.secondary)
             }
 

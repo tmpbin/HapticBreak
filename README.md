@@ -98,7 +98,7 @@ xattr -dr com.apple.quarantine /Applications/HapticBreak.app
 
 ### When a reminder arrives
 
-- Your trackpad plays the full pattern once, then re‑nudges with a single soft tap every ~20 s. The menu‑bar icon glows orange the whole time.
+- Your trackpad plays the full reminder every 10 s (haptics + sound + screen flash, if enabled). The menu‑bar icon flashes the whole time.
 - **Take the break, any way you like:**
   - **triple‑tap** the trackpad with three fingers,
   - press **`⌃⌥⏎`**,
@@ -129,9 +129,10 @@ xattr -dr com.apple.quarantine /Applications/HapticBreak.app
 Everything is plain Swift — build, test and audition from the command line:
 
 ```bash
-./build.sh release            # → build/HapticBreak.app (add `dmg` for a disk image)
-swift test                    # unit tests
-scripts/release-check.sh      # full pre‑release gate: build → tests → CLI smoke → UI snapshots → package
+./build.sh release               # → build/HapticBreak.app (current arch only)
+./build.sh release dmg universal # → Universal binary (arm64 + x86_64) + .dmg
+swift test                       # unit tests
+scripts/release-check.sh --universal --dmg  # full pre‑release gate (Universal)
 
 swift run HapticBreak --presets    # feel all 29 patterns back‑to‑back (optional strength: --presets 8)
 swift run HapticBreak --hapticlab  # open the calibration bench directly

@@ -6,6 +6,7 @@ import Foundation
 private final class CountingDelegate: BreakTimerDelegate {
     var fires = 0
     var pulses = 0
+    var hints = 0
     var autoPostpones = 0
     var acks = 0
     var lastAckMethod: AckMethod?
@@ -14,6 +15,7 @@ private final class CountingDelegate: BreakTimerDelegate {
     var willSoon = 0
     func breakTimerDidFire(_ timer: BreakTimer) { fires += 1 }
     func breakTimerPulse(_ timer: BreakTimer) { pulses += 1 }
+    func breakTimerShouldShowHint(_ timer: BreakTimer) { hints += 1 }
     func breakTimerDidAutoPostpone(_ timer: BreakTimer) { autoPostpones += 1 }
     func breakTimerDidAcknowledge(_ timer: BreakTimer, method: AckMethod) {
         acks += 1; lastAckMethod = method
@@ -83,6 +85,48 @@ func runLogicTests() -> Int32 {
     check(delegate.autoPostpones == 1, "nudge cap reached → silently auto-postponed")
     check(timer.phase == .working && timer.remaining == min(5 * 60, timer.total),
           "auto-postpone → working with postponeMinutes on the clock (capped at one interval)")
+
+    // Teaching hint after 3 unanswered nudges (pulseMax=6, hint fires once at pulse 3)
+    s.remindPulseMax = 6
+    let dHint = CountingDelegate()
+    let tHint = BreakTimer(settings: s)
+    tHint.delegate = dHint
+    for _ in 0..<60 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(tHint.phase == .reminding && dHint.fires == 1, "hint test: reminding begins")
+    for _ in 0..<10 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dHint.pulses == 1 && dHint.hints == 0, "hint test: pulse 2, no hint yet")
+    for _ in 0..<10 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dHint.pulses == 2 && dHint.hints == 1, "hint test: pulse 3 → teaching hint fires once")
+    for _ in 0..<10 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dHint.hints == 1, "hint test: hint doesn't fire again on subsequent pulses")
+    for _ in 0..<10 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    for _ in 0..<10 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    for _ in 0..<10 { _ = tHint.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dHint.autoPostpones == 1, "hint test: auto-postpone at cap(6)")
+
+    // Teaching hint with low cap (pulseMax=2): hint fires at pulse 2 (min(3,2)=2), then auto-postpone
+    s.remindPulseMax = 2
+    let dLow = CountingDelegate()
+    let tLow = BreakTimer(settings: s)
+    tLow.delegate = dLow
+    for _ in 0..<60 { _ = tLow.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(tLow.phase == .reminding && dLow.fires == 1, "low-cap hint: reminding begins")
+    for _ in 0..<10 { _ = tLow.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dLow.pulses == 1 && dLow.hints == 1, "low-cap hint: pulse 2 → hint fires (min(3,2)=2)")
+    for _ in 0..<10 { _ = tLow.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dLow.autoPostpones == 1, "low-cap hint: auto-postpone at cap(2)")
+
+    // Teaching hint with cap=1: the initial fire is the only nudge, so the hint rides on it
+    s.remindPulseMax = 1
+    let dOne = CountingDelegate()
+    let tOne = BreakTimer(settings: s)
+    tOne.delegate = dOne
+    for _ in 0..<60 { _ = tOne.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(tOne.phase == .reminding && dOne.fires == 1 && dOne.hints == 1,
+          "cap-1 hint: teaching hint fires with the initial reminder (min(3,1)=1)")
+    for _ in 0..<10 { _ = tOne.tick(idleSeconds: activeIdle, externalSuppress: nil) }
+    check(dOne.autoPostpones == 1 && dOne.hints == 1, "cap-1 hint: auto-postpone, hint stays once")
+    s.remindPulseMax = 2
 
     // Implicit acknowledgment: actually stepping away (idle ≥ 30s) during reminding
     timer.restartWorking()

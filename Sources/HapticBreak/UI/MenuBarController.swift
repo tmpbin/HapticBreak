@@ -81,13 +81,15 @@ final class MenuBarController: NSObject {
     private var ringImage: NSImage?
     private static let ringSteps = 64
 
+    /// Timer driving the reminding-phase flash animation. Started when reminding begins,
+    /// stopped when the phase changes. Toggles the icon tint between orange and red.
+    private var flashTimer: Timer?
+    private var flashToggle = false
+
     /// Refresh the menu-bar icon (style), countdown, and tinting.
     func refresh() {
         guard let button = statusItem?.button else { return }
 
-        // Icon-only / progress-ring are "title-less": use a zero-width character as a placeholder to trigger
-        // the menu bar's light/dark adaptive tinting (NSStatusBarButton's template image only inverts with
-        // the menu-bar background when accompanied by a title).
         let title: String
         let image: NSImage?
         switch viewModel.settings.menuBarStyle {
@@ -109,20 +111,52 @@ final class MenuBarController: NSObject {
         if title != lastTitle { lastTitle = title; button.title = title }
         if image !== lastImage { lastImage = image; button.image = image }
 
-        // Reminder-state emphasis: gray when paused; solid orange the whole time a reminder awaits
-        // acknowledgment (the persistent visual channel of the reminding phase); orange when near.
-        // Stays nil normally, so the system adapts tinting to the wallpaper contrast.
+        let isReminding = viewModel.phase == .reminding && !viewModel.isPaused
+
+        if isReminding && flashTimer == nil {
+            startFlash()
+        } else if !isReminding && flashTimer != nil {
+            stopFlash()
+        }
+
+        if isReminding { return }
+        if let until = pulseUntil, Date() < until { return }
+
         let tint: NSColor?
         if viewModel.isPaused {
             tint = .secondaryLabelColor
-        } else if viewModel.phase == .reminding {
-            tint = .systemOrange
         } else if viewModel.settings.auxMenubarHighlight && viewModel.remaining <= 60 && viewModel.phase == .working {
             tint = .systemOrange
         } else {
             tint = nil
         }
         if tint != lastTint { lastTint = tint; button.contentTintColor = tint }
+    }
+
+    private func startFlash() {
+        flashToggle = false
+        applyFlashTint()
+        flashTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.flashToggle.toggle()
+            self.applyFlashTint()
+        }
+    }
+
+    private func stopFlash() {
+        flashTimer?.invalidate()
+        flashTimer = nil
+        flashToggle = false
+        // An active pulse() owns the tint (e.g. the auto-postpone blip fires on the same tick the
+        // phase leaves reminding); leave it in place — the pulse's follow-up refresh() restores state.
+        if let until = pulseUntil, Date() < until { return }
+        lastTint = nil
+        statusItem?.button?.contentTintColor = nil
+    }
+
+    private func applyFlashTint() {
+        let tint: NSColor = flashToggle ? .systemRed : .systemOrange
+        if tint != lastTint { lastTint = tint; statusItem?.button?.contentTintColor = tint }
     }
 
     /// Draw the menu-bar "progress ring" template image: a thin track ring + a solid arc that grows with progress.
@@ -155,12 +189,17 @@ final class MenuBarController: NSObject {
         return image
     }
 
-    /// A brief highlight pulse when a reminder fires.
+    private var pulseUntil: Date?
+
+    /// A brief highlight pulse for state transitions (e.g. auto-postpone). Protected from being
+    /// cleared by `refresh()` until the pulse expires.
     func pulse() {
         guard let button = statusItem?.button else { return }
         button.contentTintColor = .systemRed
-        lastTint = .systemRed   // keep the diff cache honest so the follow-up refresh() restores the tint
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        lastTint = .systemRed
+        pulseUntil = Date().addingTimeInterval(0.8)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) { [weak self] in
+            self?.pulseUntil = nil
             self?.refresh()
         }
     }
@@ -196,6 +235,16 @@ final class MenuBarController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
+    }
+
+    /// Open the panel without stealing focus from the user's current app. Used for teaching hints
+    /// during reminding: the panel surfaces with the hint card visible, but the user's typing
+    /// continues undisturbed in their front app.
+    func showPopoverPassive() {
+        guard let button = statusItem?.button, !popover.isShown else { return }
+        expandPanelContent()
+        preparePopoverSize()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {

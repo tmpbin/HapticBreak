@@ -93,15 +93,15 @@ jobs:
       - name: 单元测试（swift test）
         run: swift test
 
-      - name: 构建并打包（.app + .dmg）
+      - name: 构建并打包（Universal .app + .dmg）
         env:
           HB_VERSION: ${{ steps.meta.outputs.version }}
         run: |
           chmod +x build.sh
-          ./build.sh release dmg
+          ./build.sh release dmg universal
 
       - name: 冒烟测试（计时状态机逻辑自测）
-        run: .build/release/HapticBreak --logictest
+        run: .build/apple/Products/Release/HapticBreak --logictest
 
       - name: 公证并 staple（配置了证书 + Apple ID 才执行）
         if: ${{ env.MACOS_CERTIFICATE_BASE64 != '' && env.APPLE_ID != '' }}

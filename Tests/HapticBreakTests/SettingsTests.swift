@@ -9,8 +9,8 @@ final class SettingsTests: HBTestCase {
         XCTAssertEqual(s.breakIntervalMinutes, 25)
         XCTAssertEqual(s.restMinutes, 0, "default is reminder-only (no timed rest segment)")
         XCTAssertEqual(s.strength, 6)
-        XCTAssertEqual(s.remindPulseSeconds, 20)
-        XCTAssertEqual(s.remindPulseMax, 4)
+        XCTAssertEqual(s.remindPulseSeconds, 10)
+        XCTAssertEqual(s.remindPulseMax, 6)
         XCTAssertTrue(s.ackGestureEnabled)
         XCTAssertTrue(s.idleEnabled)
         XCTAssertTrue(s.typingAwareDefer)
@@ -139,7 +139,7 @@ final class SettingsTests: HBTestCase {
         XCTAssertEqual(s.breakIntervalMinutes, 25)
         XCTAssertEqual(s.strength, 6)
         XCTAssertEqual(s.restMinutes, 0)
-        XCTAssertEqual(s.remindPulseMax, 4)
+        XCTAssertEqual(s.remindPulseMax, 6)
         XCTAssertEqual(s.customPatterns.map(\.id), ["custom.keep"], "restoring defaults does not clear custom patterns")
     }
 }

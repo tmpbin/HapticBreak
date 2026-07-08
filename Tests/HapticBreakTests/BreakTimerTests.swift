@@ -7,11 +7,12 @@ import XCTest
 final class BreakTimerTests: HBTestCase {
 
     private final class CountingDelegate: BreakTimerDelegate {
-        var fires = 0, pulses = 0, autoPostpones = 0, acks = 0
+        var fires = 0, pulses = 0, hints = 0, autoPostpones = 0, acks = 0
         var lastAckMethod: AckMethod?
         var rests = 0, changes = 0, willSoon = 0
         func breakTimerDidFire(_ timer: BreakTimer) { fires += 1 }
         func breakTimerPulse(_ timer: BreakTimer) { pulses += 1 }
+        func breakTimerShouldShowHint(_ timer: BreakTimer) { hints += 1 }
         func breakTimerDidAutoPostpone(_ timer: BreakTimer) { autoPostpones += 1 }
         func breakTimerDidAcknowledge(_ timer: BreakTimer, method: AckMethod) {
             acks += 1; lastAckMethod = method

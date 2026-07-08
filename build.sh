@@ -5,11 +5,12 @@ cd "$(dirname "$0")"
 
 CONFIG="${1:-release}"
 MAKE_DMG="${2:-}"      # 传入 "dmg" 则在打包后生成可分发的 .dmg
+ARCH="${3:-}"           # 传入 "universal" 则构建 arm64+x86_64 通用二进制
 APP_NAME="HapticBreak"
 BUNDLE_ID="com.aremind.hapticbreak"
 
 # 版本号可由环境变量注入（CI 用 git tag 注入）；本地默认与当前发布版一致。
-VERSION="${HB_VERSION:-1.0.2}"
+VERSION="${HB_VERSION:-1.1.0}"
 # 构建号（CFBundleVersion）：应用内升级按它比较新旧，必须随版本单调递增。
 # 未显式提供时由版本号导出（1.0.1 → 10001；预发布后缀忽略）。
 if [ -n "${HB_BUILD:-}" ]; then
@@ -39,10 +40,21 @@ if [ -z "$SU_FEED_URL" ] && [ -f "packaging/autoupdate/appcast-url.txt" ]; then
 fi
 [ -z "$SU_FEED_URL" ] && SU_FEED_URL="https://tmpbin.github.io/HapticBreak/appcast.xml"
 
-echo "==> swift build -c $CONFIG"
-swift build -c "$CONFIG"
+ARCH_FLAGS=""
+if [ "$ARCH" = "universal" ]; then
+    ARCH_FLAGS="--arch arm64 --arch x86_64"
+    echo "==> swift build -c $CONFIG (Universal: arm64 + x86_64)"
+else
+    echo "==> swift build -c $CONFIG ($(uname -m))"
+fi
+swift build -c "$CONFIG" $ARCH_FLAGS
 
-BIN=".build/$CONFIG/$APP_NAME"
+# Universal 构建 (--arch) 使用 Xcode build system，产物路径不同于 SPM 原生路径。
+if [ "$ARCH" = "universal" ]; then
+    BIN=".build/apple/Products/Release/$APP_NAME"
+else
+    BIN=".build/$CONFIG/$APP_NAME"
+fi
 APP="build/$APP_NAME.app"
 CONTENTS="$APP/Contents"
 
@@ -142,7 +154,11 @@ printf 'APPL????' > "$CONTENTS/PkgInfo"
 
 # ---- 应用内升级：写入 SU* 键 + 嵌入升级框架 --------------------------------
 PB=/usr/libexec/PlistBuddy
-FRAMEWORK_SRC=".build/$CONFIG/Sparkle.framework"
+if [ "$ARCH" = "universal" ]; then
+    FRAMEWORK_SRC=".build/apple/Products/Release/Sparkle.framework"
+else
+    FRAMEWORK_SRC=".build/$CONFIG/Sparkle.framework"
+fi
 if [ -d "$FRAMEWORK_SRC" ]; then
     echo "==> 写入应用内升级 Info.plist 键（feed=${SU_FEED_URL}）"
     "$PB" -c "Add :SUFeedURL string $SU_FEED_URL" "$CONTENTS/Info.plist"

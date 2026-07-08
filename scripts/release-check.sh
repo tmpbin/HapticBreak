@@ -10,20 +10,31 @@ cd "$(dirname "$0")/.."          # 切到仓库根
 
 DO_PACKAGE=1
 DMG_ARG=""
+ARCH_ARG=""
 for arg in "$@"; do
     case "$arg" in
         --no-package) DO_PACKAGE=0 ;;
         --dmg) DMG_ARG="dmg" ;;
+        --universal) ARCH_ARG="universal" ;;
         *) echo "未知参数：$arg"; exit 2 ;;
     esac
 done
 
-BIN=".build/release/HapticBreak"
+# Universal 构建 (--arch) 使用 Xcode build system，产物路径不同于 SPM 原生路径。
+if [ "$ARCH_ARG" = "universal" ]; then
+    BIN=".build/apple/Products/Release/HapticBreak"
+else
+    BIN=".build/release/HapticBreak"
+fi
 step() { printf '\n\033[1;36m==> %s\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$1"; }
 
-step "1/6 构建（release）"
-swift build -c release
+step "1/6 构建（release${ARCH_ARG:+ · universal}）"
+BUILD_ARCH_FLAGS=""
+if [ "$ARCH_ARG" = "universal" ]; then
+    BUILD_ARCH_FLAGS="--arch arm64 --arch x86_64"
+fi
+swift build -c release $BUILD_ARCH_FLAGS
 ok "swift build 完成"
 
 step "2/6 单元测试（swift test）"
@@ -47,8 +58,8 @@ SHOT_COUNT="$(ls -1 "$SHOTS_DIR"/*.png 2>/dev/null | wc -l | tr -d ' ')"
 ok "生成 $SHOT_COUNT 张界面快照"
 
 if [ "$DO_PACKAGE" -eq 1 ]; then
-    step "6/6 打包 .app${DMG_ARG:+（含 .dmg）}"
-    ./build.sh release ${DMG_ARG}
+    step "6/6 打包 .app${DMG_ARG:+（含 .dmg）}${ARCH_ARG:+（universal）}"
+    ./build.sh release ${DMG_ARG} ${ARCH_ARG}
     ok "打包完成：build/HapticBreak.app"
 else
     step "6/6 打包（已跳过 --no-package）"
