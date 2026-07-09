@@ -7,7 +7,9 @@
 #   # 未公证（ad-hoc）版本装完后放行一次（新版 brew 已禁用 --no-quarantine 开关）：
 #   xattr -dr com.apple.quarantine /Applications/HapticBreak.app
 #
-# 发版维护：每次 Release 后更新 version 与 sha256（可由 CI 自动 bump，见 docs）。
+# 发版维护：本文件是 tap 仓库 cask 的模板——正式发布时 release.yml 会以它为底、
+# 重写 version 与 sha256 两行后推送到 tmpbin/homebrew-tap（需配置 TAP_DEPLOY_KEY）。
+# 除这两行外的任何改动（描述 / zap / 依赖等）在下次发布时自动带到 tap，无需手动同步。
 #   sha256:  shasum -a 256 HapticBreak-<版本>.dmg
 
 cask "hapticbreak" do

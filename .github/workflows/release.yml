@@ -10,6 +10,8 @@ name: Release
 #   APPLE_ID                    Apple 开发者账号邮箱
 #   APPLE_TEAM_ID               10 位 Team ID
 #   APPLE_APP_PASSWORD          App 专用密码（App-Specific Password）
+#   TAP_DEPLOY_KEY              homebrew-tap 仓库的写入型 deploy key（ed25519 私钥）；
+#                               配置后每次正式发布自动 bump tap 里的 cask（version + dmg sha256）
 
 on:
   push:
@@ -29,6 +31,8 @@ jobs:
       # 应用内升级：EdDSA 私钥（setup-keys.sh 导出的文件内容）。
       # 配置后自动生成 appcast 并发布到 gh-pages；未配置则跳过（仍可正常出 Release）。
       UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
+      # Homebrew tap 同步：homebrew-tap 仓库的写入型 deploy key。未配置则跳过。
+      TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
 
     steps:
       - name: Checkout
@@ -200,3 +204,36 @@ jobs:
               commit -qm "appcast: HapticBreak $VERSION" || { echo "appcast 无变化，跳过发布。"; exit 0; }
           git push -q origin gh-pages
           echo "==> 已发布 appcast 到 gh-pages。"
+
+      # 历史教训：1.1.0 只更新了主仓内的 cask 副本，忘了同步 tap 仓库，brew 用户停在 1.0.2。
+      # 现在由 CI 兜底：以主仓 cask 为模板，写入本次版本与 dmg sha256，推送 tap。
+      - name: 同步 Homebrew tap 的 cask（配置了 TAP_DEPLOY_KEY 且非预发布才执行）
+        if: ${{ env.TAP_DEPLOY_KEY != '' && steps.meta.outputs.prerelease == 'false' }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          SHA256="$(shasum -a 256 "dist/HapticBreak-$VERSION.dmg" | awk '{print $1}')"
+
+          # 写入型 deploy key 走 SSH 推送 tap 仓库（私钥仅存内存盘临时文件，任务结束即毁）。
+          KEY="$RUNNER_TEMP/tap_deploy_key"
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+
+          TAP="$RUNNER_TEMP/homebrew-tap"
+          git clone --depth 1 git@github.com:tmpbin/homebrew-tap.git "$TAP"
+
+          # 主仓 cask 是模板；version / sha256 两行由此处按本次发布重写。
+          mkdir -p "$TAP/Casks"
+          sed -E \
+            -e "s|^(  version \").*(\")$|\1$VERSION\2|" \
+            -e "s|^(  sha256 \").*(\")$|\1$SHA256\2|" \
+            packaging/homebrew/Casks/hapticbreak.rb > "$TAP/Casks/hapticbreak.rb"
+
+          cd "$TAP"
+          git add Casks/hapticbreak.rb
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qm "cask: bump hapticbreak to $VERSION" || { echo "cask 无变化，跳过。"; exit 0; }
+          git push -q origin HEAD
+          echo "==> 已同步 tap 的 cask 到 $VERSION（sha256 $SHA256）。"
