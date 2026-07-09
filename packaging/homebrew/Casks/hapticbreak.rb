@@ -11,8 +11,8 @@
 #   sha256:  shasum -a 256 HapticBreak-<版本>.dmg
 
 cask "hapticbreak" do
-  version "1.1.0"
-  sha256 "5aedfd348ab2f572f2a774da9963e344abff1a0de44edbb75be4b2506701196a"
+  version "1.2.0"
+  sha256 "3f53fada26061ccb0a86a7abf4eee5b0bde97bc96a121d2bf1a3a55bb0301ca0"
 
   url "https://github.com/tmpbin/HapticBreak/releases/download/v#{version}/HapticBreak-#{version}.dmg",
       verified: "github.com/tmpbin/HapticBreak/"
