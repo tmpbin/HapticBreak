@@ -14,7 +14,10 @@ private final class PlaybackToken {
 /// - **Inspector**: one compact row of controls for the selected beat only (timbre / strength / gap).
 /// - Dullness and JSON import/export live under an "Advanced" disclosure for power users.
 struct PatternEditorView: View {
-    @ObservedObject var viewModel: AppViewModel
+    /// Action entry points only (test playback) — deliberately NOT `@ObservedObject`: the view model
+    /// ticks once per second, and this window stays alive after close (WindowManager reuse). Observing
+    /// it would re-layout the whole hidden editor every second (docs/PANEL_CPU_INVESTIGATION.md §12).
+    let viewModel: AppViewModel
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared
 

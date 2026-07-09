@@ -48,6 +48,27 @@ final class HotKeyBindingTests: HBTestCase {
         XCTAssertEqual(decoded.pause.keyCode, 49)
         XCTAssertEqual(decoded.acknowledge, HotKeyBindings.defaults.acknowledge,
                        "missing fields fall back to factory defaults")
+        XCTAssertTrue(decoded.pauseEnabled && decoded.skipEnabled
+                      && decoded.buzzEnabled && decoded.acknowledgeEnabled,
+                      "per-action switches absent from an old blob decode as enabled")
+    }
+
+    func testPerActionEnableRoundTrip() {
+        let d = makeDefaults()
+        let s1 = Settings(defaults: d)
+        s1.hotKeys.buzzEnabled = false
+        let s2 = Settings(defaults: d)
+        XCTAssertFalse(s2.hotKeys.buzzEnabled, "per-action switch persists")
+        XCTAssertTrue(s2.hotKeys.pauseEnabled, "other actions stay enabled")
+        XCTAssertNotEqual(s2.hotKeys, .defaults, "a flipped switch marks the bindings as customized (reset button appears)")
+    }
+
+    func testDuplicateDetectionIncludesDisabledActions() {
+        var b = HotKeyBindings.defaults
+        b.skipEnabled = false
+        b.skip = b.pause
+        XCTAssertFalse(b.hasNoDuplicates,
+                       "a disabled action's combo still counts — re-enabling must never surface a hidden conflict")
     }
 
     func testResetToDefaultsRestoresBindings() {

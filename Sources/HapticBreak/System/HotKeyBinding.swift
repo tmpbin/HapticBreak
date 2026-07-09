@@ -83,6 +83,13 @@ struct HotKeyBindings: Codable, Equatable {
     var skip: HotKeyBinding
     var buzz: HotKeyBinding
     var acknowledge: HotKeyBinding
+    /// Per-action switches: the Settings master toggle gates the whole feature; these choose which
+    /// of the combos are actually registered (an unwanted combo can be turned off without losing
+    /// its recorded keys). Blobs from older builds decode as enabled.
+    var pauseEnabled: Bool
+    var skipEnabled: Bool
+    var buzzEnabled: Bool
+    var acknowledgeEnabled: Bool
 
     static let defaults = HotKeyBindings(
         pause:       HotKeyBinding(keyCode: UInt32(kVK_Space),  modifiers: UInt32(controlKey) | UInt32(optionKey)),
@@ -90,11 +97,17 @@ struct HotKeyBindings: Codable, Equatable {
         buzz:        HotKeyBinding(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(controlKey) | UInt32(optionKey)),
         acknowledge: HotKeyBinding(keyCode: UInt32(kVK_Return), modifiers: UInt32(controlKey) | UInt32(optionKey)))
 
-    init(pause: HotKeyBinding, skip: HotKeyBinding, buzz: HotKeyBinding, acknowledge: HotKeyBinding) {
+    init(pause: HotKeyBinding, skip: HotKeyBinding, buzz: HotKeyBinding, acknowledge: HotKeyBinding,
+         pauseEnabled: Bool = true, skipEnabled: Bool = true,
+         buzzEnabled: Bool = true, acknowledgeEnabled: Bool = true) {
         self.pause = pause
         self.skip = skip
         self.buzz = buzz
         self.acknowledge = acknowledge
+        self.pauseEnabled = pauseEnabled
+        self.skipEnabled = skipEnabled
+        self.buzzEnabled = buzzEnabled
+        self.acknowledgeEnabled = acknowledgeEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -103,9 +116,14 @@ struct HotKeyBindings: Codable, Equatable {
         skip        = try c.decodeIfPresent(HotKeyBinding.self, forKey: .skip)        ?? Self.defaults.skip
         buzz        = try c.decodeIfPresent(HotKeyBinding.self, forKey: .buzz)        ?? Self.defaults.buzz
         acknowledge = try c.decodeIfPresent(HotKeyBinding.self, forKey: .acknowledge) ?? Self.defaults.acknowledge
+        pauseEnabled       = try c.decodeIfPresent(Bool.self, forKey: .pauseEnabled)       ?? true
+        skipEnabled        = try c.decodeIfPresent(Bool.self, forKey: .skipEnabled)        ?? true
+        buzzEnabled        = try c.decodeIfPresent(Bool.self, forKey: .buzzEnabled)        ?? true
+        acknowledgeEnabled = try c.decodeIfPresent(Bool.self, forKey: .acknowledgeEnabled) ?? true
     }
 
     /// True when all four combos are distinct (a duplicate would make one action unreachable).
+    /// Checked across disabled actions too, so re-enabling one can never create a hidden conflict.
     var hasNoDuplicates: Bool {
         Set([pause, skip, buzz, acknowledge]).count == 4
     }

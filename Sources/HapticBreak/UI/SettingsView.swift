@@ -7,7 +7,10 @@ import SwiftUI
 struct SettingsView: View {
     enum Tab { case basic, advanced }
 
-    @ObservedObject var viewModel: AppViewModel
+    /// Action entry points only — deliberately NOT `@ObservedObject`: the view model ticks (`remaining`)
+    /// once per second, and this window stays alive after close (WindowManager reuse). Observing it would
+    /// re-layout the whole hidden form every second (docs/PANEL_CPU_INVESTIGATION.md §12).
+    let viewModel: AppViewModel
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared
     @State private var showResetConfirm = false
@@ -33,10 +36,13 @@ struct SettingsView: View {
         return parts.joined(separator: " + ")
     }
 
-    /// One shortcut recorder row: rejects combos already bound to another action and suspends the
-    /// global hotkeys during capture (so the current combos can be re-recorded).
+    /// One shortcut row: the recorder (rejects combos already bound to another action, suspends the
+    /// global hotkeys during capture so the current combos can be re-recorded) plus a per-action
+    /// switch — only enabled combos get registered. Turning an action off keeps its recorded keys.
     @ViewBuilder
-    private func hotKeyRow(_ title: String, _ keyPath: WritableKeyPath<HotKeyBindings, HotKeyBinding>) -> some View {
+    private func hotKeyRow(_ title: String,
+                           _ keyPath: WritableKeyPath<HotKeyBindings, HotKeyBinding>,
+                           _ enabledPath: WritableKeyPath<HotKeyBindings, Bool>) -> some View {
         HotKeyRecorderRow(
             title: title,
             binding: Binding(get: { settings.hotKeys[keyPath: keyPath] },
@@ -46,7 +52,9 @@ struct SettingsView: View {
                 candidate[keyPath: keyPath] = combo
                 return !candidate.hasNoDuplicates
             },
-            setCaptureActive: { viewModel.setHotKeyCapture($0) })
+            setCaptureActive: { viewModel.setHotKeyCapture($0) },
+            enabled: Binding(get: { settings.hotKeys[keyPath: enabledPath] },
+                             set: { settings.hotKeys[keyPath: enabledPath] = $0 }))
     }
 
     /// Category-grouped pattern picker (basic / nature / rhythm / custom).
@@ -121,8 +129,11 @@ struct SettingsView: View {
             Section {
                 Toggle(L.t("settings.ackGesture"), isOn: $settings.ackGestureEnabled)
                     .disabled(!TouchGestureMonitor.isSupported)
-                Text(L.t("hotkey.ackHint", settings.hotKeys.acknowledge.display))
-                    .font(.caption).foregroundStyle(.secondary)
+                // Only advertise the acknowledge combo while it's actually registered.
+                if settings.enableShortcuts && settings.hotKeys.acknowledgeEnabled {
+                    Text(L.t("hotkey.ackHint", settings.hotKeys.acknowledge.display))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             } header: {
                 Text(L.t("settings.section.acknowledge"))
             } footer: {
@@ -214,10 +225,10 @@ struct SettingsView: View {
             Section {
                 Toggle(L.t("settings.shortcuts"), isOn: $settings.enableShortcuts)
                 if settings.enableShortcuts {
-                    hotKeyRow(L.t("hotkey.pause"), \.pause)
-                    hotKeyRow(L.t("hotkey.skip"), \.skip)
-                    hotKeyRow(L.t("hotkey.buzz"), \.buzz)
-                    hotKeyRow(L.t("hotkey.ack"), \.acknowledge)
+                    hotKeyRow(L.t("hotkey.pause"), \.pause, \.pauseEnabled)
+                    hotKeyRow(L.t("hotkey.skip"), \.skip, \.skipEnabled)
+                    hotKeyRow(L.t("hotkey.buzz"), \.buzz, \.buzzEnabled)
+                    hotKeyRow(L.t("hotkey.ack"), \.acknowledge, \.acknowledgeEnabled)
                     if settings.hotKeys != .defaults {
                         Button(L.t("hotkey.reset")) { settings.hotKeys = .defaults }
                     }

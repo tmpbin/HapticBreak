@@ -7,7 +7,21 @@ struct TodayRhythm: Equatable {
     var isEmpty: Bool { breakMinutes.isEmpty && activeByHour.allSatisfy { $0 == 0 } }
 }
 
+/// Haptic backend identity/health (shown in About and the panel's warning row). Lives in its own
+/// observable, apart from `AppViewModel`: `remaining` fires `objectWillChange` every second, and any
+/// hidden-but-alive auxiliary window observing the view model would re-layout + redraw once per tick
+/// in the background (see docs/PANEL_CPU_INVESTIGATION.md §12). Auxiliary windows must observe only
+/// this (rarely changing) object — never the whole view model.
+final class BackendStatus: ObservableObject {
+    @Published var name: String = ""
+    @Published var available: Bool = true
+}
+
 /// Bridge between the controller and SwiftUI (MVVM). Holds mirrored state and the action entry points.
+///
+/// CPU regression rule: `remaining` makes this object tick at 1 Hz. Only the panel (PopoverView) may
+/// observe it via `@ObservedObject`; auxiliary window views (Settings / editor / About / lab / stats)
+/// hold it as a plain `let` for actions, or observe `backend` for the rare backend fields.
 final class AppViewModel: ObservableObject {
 
     @Published var remaining: Int = 0
@@ -15,8 +29,7 @@ final class AppViewModel: ObservableObject {
     @Published var phase: BreakPhase = .working
     @Published var pauseReason: PauseReason = .none
     @Published var isDeferring: Bool = false
-    @Published var backendName: String = ""
-    @Published var backendAvailable: Bool = true
+    let backend = BackendStatus()
     /// Whether the control panel is visible. When collapsed, the ring stops all animation rendering,
     /// minimizing background resource usage.
     @Published var panelVisible: Bool = false

@@ -10,7 +10,7 @@ APP_NAME="HapticBreak"
 BUNDLE_ID="com.aremind.hapticbreak"
 
 # 版本号可由环境变量注入（CI 用 git tag 注入）；本地默认与当前发布版一致。
-VERSION="${HB_VERSION:-1.1.0}"
+VERSION="${HB_VERSION:-1.2.0}"
 # 构建号（CFBundleVersion）：应用内升级按它比较新旧，必须随版本单调递增。
 # 未显式提供时由版本号导出（1.0.1 → 10001；预发布后缀忽略）。
 if [ -n "${HB_BUILD:-}" ]; then

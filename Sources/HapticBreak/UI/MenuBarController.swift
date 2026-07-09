@@ -245,6 +245,47 @@ final class MenuBarController: NSObject {
         expandPanelContent()
         preparePopoverSize()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        beginPassivePresentation()
+    }
+
+    // MARK: - Passive presentation lifecycle
+    // A passively surfaced panel never makes the app active, so NSPopover's `.transient` dismissal
+    // (which relies on the app receiving the outside click) never fires — without help the panel
+    // would linger forever. Two escape hatches:
+    //  1. a global mouse monitor emulates transient dismissal (clicks in other apps close it;
+    //     clicks inside the panel don't reach a *global* monitor, so interacting keeps it open);
+    //  2. once the reminder is resolved (acknowledged / auto-postponed), the panel tucks itself
+    //     away after a short beat so the user sees the outcome (see `closeAfterReminderResolved`).
+    // Global *mouse* monitors need no accessibility permission (zero-permission product identity).
+
+    private var passivePresentation = false
+    private var passiveClickMonitor: Any?
+    private var passiveCloseTimer: Timer?
+
+    private func beginPassivePresentation() {
+        passivePresentation = true
+        passiveClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.popover.performClose(nil)
+        }
+    }
+
+    private func endPassivePresentation() {
+        passivePresentation = false
+        if let monitor = passiveClickMonitor { NSEvent.removeMonitor(monitor); passiveClickMonitor = nil }
+        passiveCloseTimer?.invalidate()
+        passiveCloseTimer = nil
+    }
+
+    /// The reminder the passive panel was surfaced for is resolved: auto-collapse shortly after,
+    /// letting the user glimpse the outcome (rest ring / restored countdown) first. No-op for
+    /// panels the user opened themselves.
+    func closeAfterReminderResolved(after delay: TimeInterval = 1.5) {
+        guard passivePresentation, popover.isShown else { return }
+        passiveCloseTimer?.invalidate()
+        passiveCloseTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            self?.popover.performClose(nil)
+        }
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {
@@ -320,6 +361,7 @@ extension MenuBarController: NSPopoverDelegate {
     /// On close: turn off `panelVisible`, the ring stops all animations (shimmer/second hand, etc.), and it
     /// stays alive silently in the background.
     func popoverDidClose(_ notification: Notification) {
+        endPassivePresentation()
         viewModel.controller?.panelClosed()
         viewModel.panelVisible = false
         collapsePanelContent()

@@ -58,8 +58,8 @@ final class AppController: NSObject, BreakTimerDelegate {
         super.init()
         viewModel.controller = self
         timer.delegate = self
-        viewModel.backendName = engine.backendName
-        viewModel.backendAvailable = engine.isAvailable
+        viewModel.backend.name = engine.backendName
+        viewModel.backend.available = engine.isAvailable
     }
 
     // MARK: - Lifecycle
@@ -320,6 +320,7 @@ final class AppController: NSObject, BreakTimerDelegate {
     /// Reminding cap reached without acknowledgment → silently auto-postpone.
     func breakTimerDidAutoPostpone(_ timer: BreakTimer) {
         menuBar.pulse()
+        menuBar.closeAfterReminderResolved()
     }
 
     func breakTimerDidAcknowledge(_ timer: BreakTimer, method: AckMethod) {
@@ -329,6 +330,9 @@ final class AppController: NSObject, BreakTimerDelegate {
         if method != .stepAway {
             player.play(.double, strength: settings.strength)
         }
+        // If the teaching panel surfaced itself for this reminder, tuck it away shortly after the
+        // acknowledgment (e.g. the three-finger tap) — the user never asked for a panel to manage.
+        menuBar.closeAfterReminderResolved()
     }
 
     func breakTimerDidFinishRest(_ timer: BreakTimer) {
@@ -408,7 +412,7 @@ final class AppController: NSObject, BreakTimerDelegate {
     /// Language switch: refresh engine-produced localized strings such as the backend name
     /// (SwiftUI text refreshes automatically via @ObservedObject).
     @objc private func languageChanged() {
-        viewModel.backendName = engine.backendName
+        viewModel.backend.name = engine.backendName
     }
 
     @objc private func settingsChanged() {
@@ -419,8 +423,8 @@ final class AppController: NSObject, BreakTimerDelegate {
             currentBackend = settings.backend
             engine = HapticEngineFactory.make(settings.backend)
             player.updateEngine(engine)
-            viewModel.backendName = engine.backendName
-            viewModel.backendAvailable = engine.isAvailable
+            viewModel.backend.name = engine.backendName
+            viewModel.backend.available = engine.isAvailable
         }
 
         // Re-register only when the shortcut switch or a binding actually changes, to avoid repeated

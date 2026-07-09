@@ -4,11 +4,20 @@ import SwiftUI
 /// "MultitouchSupport · private API" is debug information — it belongs here, out of everyday sight,
 /// together with the hidden Haptic Lab entry (tap the actuator row 5 times).
 struct AboutView: View {
-    @ObservedObject var viewModel: AppViewModel
+    /// Actions only — NOT `@ObservedObject` (the view model ticks per second; this window stays alive
+    /// after close, see docs/PANEL_CPU_INVESTIGATION.md §12). Backend fields come from `backend` below.
+    let viewModel: AppViewModel
+    /// The rarely-changing backend identity/health — safe to observe from a hidden-but-alive window.
+    @ObservedObject private var backend: BackendStatus
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared
     @State private var labTapCount = 0
     @State private var lastLabTap = Date.distantPast
+
+    init(viewModel: AppViewModel) {
+        self.viewModel = viewModel
+        self.backend = viewModel.backend
+    }
 
     /// Hidden entry point: tapping the "actuator status" row 5 times within 2 seconds opens the "Haptic Lab".
     private func revealHapticLab() {
@@ -55,11 +64,11 @@ struct AboutView: View {
                         ForEach(HapticBackend.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
                     .id("pick.backend.\(l10n.language.rawValue)")
-                    LabeledContent(L.t("settings.currentBackend"), value: viewModel.backendName)
+                    LabeledContent(L.t("settings.currentBackend"), value: backend.name)
                     LabeledContent(L.t("settings.actuatorStatus")) {
-                        Label(viewModel.backendAvailable ? L.t("status.available") : L.t("status.unavailable"),
-                              systemImage: viewModel.backendAvailable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(viewModel.backendAvailable ? .green : .orange)
+                        Label(backend.available ? L.t("status.available") : L.t("status.unavailable"),
+                              systemImage: backend.available ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(backend.available ? .green : .orange)
                             .labelStyle(.titleAndIcon)
                     }
                     .contentShape(Rectangle())

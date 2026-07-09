@@ -2,8 +2,9 @@ import SwiftUI
 import AppKit
 import Carbon.HIToolbox
 
-/// One editable shortcut row: label on the left, the current combo as a bordered button on the
-/// right. Click → recording mode (orange): the next key press becomes the new combo; ⎋ cancels.
+/// One editable shortcut row: label on the left; on the right an optional per-action switch
+/// (whether this combo gets registered at all) and the current combo as a bordered button.
+/// Click → recording mode (orange): the next key press becomes the new combo; ⎋ cancels.
 /// While recording the app's global hotkeys are suspended, so the *current* combos can be re-recorded
 /// instead of being swallowed by Carbon before they reach us.
 struct HotKeyRecorderRow: View {
@@ -13,10 +14,16 @@ struct HotKeyRecorderRow: View {
     let isTaken: (HotKeyBinding) -> Bool
     /// Suspends (true) / restores (false) the app's global hotkey registration during capture.
     let setCaptureActive: (Bool) -> Void
+    /// Per-action enable switch, rendered inside the row (nil = always on, no switch shown).
+    /// Lives in the LabeledContent *content* slot — a control wrapped around/next to LabeledContent
+    /// in a Form row loses interactivity on macOS.
+    var enabled: Binding<Bool>? = nil
 
     @State private var recording = false
     @State private var monitor: Any?
     @State private var hint: String?
+
+    private var isEnabled: Bool { enabled?.wrappedValue ?? true }
 
     var body: some View {
         LabeledContent(title) {
@@ -33,7 +40,19 @@ struct HotKeyRecorderRow: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(recording ? .orange : nil)
+                .disabled(!isEnabled)
+                .opacity(isEnabled ? 1 : 0.45)
+                if let enabled {
+                    Toggle(title, isOn: enabled)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .labelsHidden()
+                }
             }
+        }
+        .opacity(isEnabled ? 1 : 0.6)
+        .onChange(of: isEnabled) { nowEnabled in
+            if !nowEnabled { stopRecording() }
         }
         .onDisappear { stopRecording() }
     }

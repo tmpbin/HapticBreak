@@ -21,10 +21,18 @@ final class HotKeyManager {
                           skip: @escaping () -> Void,
                           breakNow: @escaping () -> Void,
                           acknowledge: @escaping () -> Void) {
-        register(keyCode: bindings.pause.keyCode,       modifiers: bindings.pause.modifiers,       action: togglePause)
-        register(keyCode: bindings.skip.keyCode,        modifiers: bindings.skip.modifiers,        action: skip)
-        register(keyCode: bindings.buzz.keyCode,        modifiers: bindings.buzz.modifiers,        action: breakNow)
-        register(keyCode: bindings.acknowledge.keyCode, modifiers: bindings.acknowledge.modifiers, action: acknowledge)
+        if bindings.pauseEnabled {
+            register(keyCode: bindings.pause.keyCode, modifiers: bindings.pause.modifiers, action: togglePause)
+        }
+        if bindings.skipEnabled {
+            register(keyCode: bindings.skip.keyCode, modifiers: bindings.skip.modifiers, action: skip)
+        }
+        if bindings.buzzEnabled {
+            register(keyCode: bindings.buzz.keyCode, modifiers: bindings.buzz.modifiers, action: breakNow)
+        }
+        if bindings.acknowledgeEnabled {
+            register(keyCode: bindings.acknowledge.keyCode, modifiers: bindings.acknowledge.modifiers, action: acknowledge)
+        }
     }
 
     func register(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
