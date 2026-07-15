@@ -179,6 +179,21 @@ final class BreakTimerTests: HBTestCase {
         XCTAssertEqual(t.remaining, before, "does not decrement while idle-paused")
     }
 
+    func testIdleDuringRestingKeepsCountingDown() {
+        let (t, _) = makeTimer { s in
+            s.restMinutes = 1
+            s.idleEnabled = true
+            s.idlePauseSeconds = 60
+        }
+        tick(t, 60)
+        t.acknowledge(.panel)
+        XCTAssertEqual(t.phase, .resting)
+        _ = t.tick(idleSeconds: 120, externalSuppress: nil)
+        XCTAssertEqual(t.pauseReason, PauseReason.none,
+                       "being away during the rest segment IS the rest — no idle pause")
+        XCTAssertEqual(t.remaining, 59, "rest countdown keeps running while the user is away")
+    }
+
     func testIdleDuringRemindingAcknowledgesInsteadOfPausing() {
         let (t, d) = makeTimer { s in
             s.idleEnabled = true

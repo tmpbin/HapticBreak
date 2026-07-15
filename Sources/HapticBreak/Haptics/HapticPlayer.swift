@@ -124,6 +124,16 @@ final class HapticPlayer {
         lock.lock(); defer { lock.unlock() }; return transientGen == g
     }
 
+    /// Recorder audition: fire one design-strength beat with NO drag-coalescing — the playback
+    /// loop paces the calls itself and every recorded beat must sound (coalescing would drop
+    /// closely spaced beats whenever an actuation outlasts the gap to the next one).
+    func auditionStepDesign(_ step: HapticStep) {
+        lock.lock(); let engine = self.engine; lock.unlock()
+        occupyChannel(forMs: Self.busyTailMs)
+        let tone = profile.resolveDesign(step: step)
+        queue.async { engine.actuate(tone) }
+    }
+
     /// Background-level "follow-the-second" beat: take one full beat from the "heartbeat" pattern
     /// (strong→weak lub-dub), scaled to 0.85 overall and by the global strength. Skipped if a
     /// high-priority haptic is playing (`isBusy`); does not occupy the channel nor interrupt real playback.

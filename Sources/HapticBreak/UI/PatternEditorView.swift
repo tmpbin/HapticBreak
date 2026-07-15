@@ -171,7 +171,11 @@ struct PatternEditorView: View {
                 Text(L.t("editor.canvasHint"))
                     .font(.caption2).foregroundStyle(.secondary)
                 if let index = selectedIndex {
+                    // Identity pinned to the beat: switching selection rebuilds the row instead of
+                    // mutating it in place, so the sliders' onChange (buzz-on-slide) can't misread
+                    // the old→new value swap as a user drag and fire a stray haptic.
                     inspector(index: index)
+                        .id(draft.steps[index].id)
                 }
                 advancedSection
                 HStack {
@@ -649,7 +653,9 @@ struct PatternEditorView: View {
             for (i, step) in steps.enumerated() {
                 if token.isCancelled { return }
                 DispatchQueue.main.async { self.playbackHighlight = i }
-                vm.testStep(step)
+                // Non-coalescing audition path: `testStep` merges rapid fires (drag preview),
+                // which would swallow closely spaced beats during sequence playback.
+                vm.auditionStep(step)
                 if i < steps.count - 1 {
                     usleep(useconds_t(step.gapMsAfter * 1000))
                 }
@@ -691,18 +697,33 @@ struct PatternEditorView: View {
         keyMonitor = nil
     }
 
+    /// Per-pad voice. On-device finding: the soft family's waveform (ID1 "weak click") is too faint
+    /// to serve as a drum voice even at full strength, so the light pad plays the *strong-tap*
+    /// waveform (crisp family) at level 4 instead — the same clear waveform as the clap pad,
+    /// separated by a 2× amplitude gap, reads far better than a different-but-imperceptible one.
+    /// The clap sits at the sharpest pulse, the kick at maximum amplitude + widest pulse on the
+    /// thud waveform.
+    private static func drumStep(_ timbre: HapticTimbre) -> HapticStep {
+        switch timbre {
+        case .soft:  return HapticStep(timbre: .crisp, strength: 4,  dullness: 0.3, gapMsAfter: 0)
+        case .crisp: return HapticStep(timbre: .crisp, strength: 8,  dullness: 0.0, gapMsAfter: 0)
+        case .buzz:  return HapticStep(timbre: .buzz,  strength: 10, dullness: 1.0, gapMsAfter: 0)
+        }
+    }
+
     private func recordTap(_ timbre: HapticTimbre) {
         let now = Date()
         if let last = lastTapAt, let lastIndex = recordedSteps.indices.last {
             let gap = Int(now.timeIntervalSince(last) * 1000)
             recordedSteps[lastIndex].gapMsAfter = max(60, min(2000, gap))
         }
-        let dullness: Double = timbre == .buzz ? 0.6 : 0.3
-        let step = HapticStep(timbre: timbre, strength: timbre == .buzz ? 7 : 6,
-                              dullness: dullness, gapMsAfter: 0)
+        let step = Self.drumStep(timbre)
         recordedSteps.append(step)
         lastTapAt = now
-        viewModel.testStep(step)
+        // Non-coalescing audition: drum hits arrive in fast rolls (or rapid J/K comparisons), and
+        // the drag-preview path would silently drop any hit landing while the previous actuation
+        // is still executing — every recorded beat must be felt the moment it lands.
+        viewModel.auditionStep(step)
     }
 
     private func finishRecording() {
@@ -730,6 +751,9 @@ struct PatternEditorView: View {
                             .font(.caption2.monospacedDigit()).foregroundStyle(.secondary).frame(width: 32)
                         unifyMenu
                     }
+                    // Same identity pinning as the inspector: selection changes rebuild the row,
+                    // so onChange can't mistake the old→new beat value swap for a slider drag.
+                    .id(draft.steps[index].id)
                 }
                 HStack(spacing: 10) {
                     Button { importFile() } label: { Label(L.t("editor.import"), systemImage: "square.and.arrow.down") }
@@ -933,7 +957,12 @@ private struct BeatBar: View {
     var onSelect: () -> Void
     var onStrength: (Int) -> Void
 
-    @State private var dragging = false
+    /// Strength when the drag began (nil = not currently dragging).
+    @State private var dragBase: Int?
+    @State private var dragChanged = false
+
+    /// Vertical travel per strength level while dragging (matches the bar's own 10.5 pt/level scale).
+    private static let pointsPerLevel: CGFloat = 12
 
     private var barHeight: CGFloat { 16 + CGFloat(step.strength) * 10.5 }
 
@@ -952,14 +981,27 @@ private struct BeatBar: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    if !dragging && abs(value.translation.height) < 5 { return }
-                    dragging = true
-                    let fraction = 1 - min(max(value.location.y / canvasHeight, 0), 1)
-                    onStrength(1 + Int((fraction * 9).rounded()))
+                    if dragBase == nil {
+                        guard abs(value.translation.height) >= 6 else { return }
+                        dragBase = step.strength
+                    }
+                    guard let base = dragBase else { return }
+                    // Relative dragging, anchored at the strength when the drag began: an
+                    // imperfect click can no longer slam the value to wherever the cursor
+                    // happens to land (the old absolute mapping made a stray click jump
+                    // e.g. 9→2 and buzz once per level the whole way down).
+                    let target = max(1, min(10, base - Int((value.translation.height / Self.pointsPerLevel).rounded())))
+                    if target != step.strength {
+                        dragChanged = true
+                        onStrength(target)
+                    }
                 }
                 .onEnded { _ in
-                    if !dragging { onSelect() }
-                    dragging = false
+                    // A press-and-release that never changed the value is a tap — including
+                    // jittery clicks that crossed the drag threshold but rounded to ±0 levels.
+                    if !dragChanged { onSelect() }
+                    dragBase = nil
+                    dragChanged = false
                 }
         )
         .help("\(step.timbre.displayName) · \(step.strength)")

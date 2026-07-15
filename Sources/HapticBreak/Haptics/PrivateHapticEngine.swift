@@ -80,8 +80,13 @@ final class PrivateHapticEngine: HapticEngine {
             for i in 0..<count {
                 guard let devPtr = CFArrayGetValueAtIndex(array, i) else { continue }
                 // Scan struct offsets that may hold the device ID; validate correctness by "whether the actuator opens".
+                // Bound the scan by the actual heap allocation so a smaller device object on a future
+                // macOS can never be read past its end (malloc_size returns 0 for non-malloc pointers,
+                // in which case keep the legacy 256-byte bound).
+                let objectSize = malloc_size(devPtr)
+                let maxOffset = objectSize > 0 ? min(256, objectSize - MemoryLayout<UInt64>.size) : 256
                 var offset = 0
-                while offset <= 256 {
+                while offset <= maxOffset {
                     let candidate = devPtr.loadUnaligned(fromByteOffset: offset, as: UInt64.self)
                     if candidate != 0, actuatorOpens(candidate, using: mt) {
                         if debug {

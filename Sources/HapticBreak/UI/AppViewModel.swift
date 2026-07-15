@@ -134,6 +134,7 @@ final class AppViewModel: ObservableObject {
     func testCurrentPattern() { controller?.testCurrentPattern() }
     func testPattern(_ p: HapticPattern) { controller?.testPattern(p) }
     func testStep(_ step: HapticStep)    { controller?.testStep(step) }
+    func auditionStep(_ step: HapticStep) { controller?.auditionStep(step) }
     func openSettings()       { controller?.openSettings() }
     func openStatistics()     { controller?.openStatistics() }
     func openPatternEditor()  { controller?.openPatternEditor() }

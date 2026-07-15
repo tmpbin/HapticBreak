@@ -11,6 +11,26 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-15
+
+全码库体检后的修复版：诚实休息统计更诚实、休息倒计时不再被"真的去休息"冻结；编辑器点拍与打鼓手感重调。
+
+### Changed
+- **鼓垫三声部重调**：轻点 = 重拍波形 4 档（原 soft 波形在指尖难以辨认）、清脆 = 8 档最锐脉冲、
+  低频嗡 = 10 档最宽脉冲；敲击与回放改走不合并通道，快速连敲、密集节奏不再丢拍。
+- **打字推迟（等停顿再提醒）期间计入活跃统计**——正在打字显然在工作。
+
+### Fixed
+- **诚实休息窗口泄漏**：跳过 / 推迟 / 自动推迟 / 进入静音场景后，2 分钟内离开电脑不再被计为
+  一次真实休息（此前同一次提醒会同时记"跳过"和"休息"，虚增连续天数与统计）。
+- **休息倒计时被空闲暂停冻结**：休息段里人离开电脑正是休息本身，倒计时照常走完。
+- **编辑器点按高低拍互相误触**：拍子柱强度改为以起点为锚的相对拖动，点按不再把强度甩到
+  光标所在高度；切换选中拍时检查器滑杆不再把"旧值→新值"误判为拖动而多触发一次震动。
+- **开机自启状态漂移**：启动时与系统"登录项"实际状态对齐，在系统设置里手动移除后
+  应用内开关不再显示过期状态。
+- **稳健性**：私有框架设备 ID 扫描以实际堆分配大小为界（防未来系统上越界读取）；
+  统计文件损坏时改名备份而非被下次保存静默清空；`--demo` 演示运行不再启动 Sparkle。
+
 ## [1.2.0] - 2026-07-10
 
 后台更省电：修复辅助窗口引发的空闲 CPU 回归；教学提示面板学会自己收回；全局快捷键支持单项启停。
@@ -153,7 +173,9 @@
 - 独立分发（非 App Store）：`build.sh` 支持版本注入与可选 Developer ID 签名 / 公证；
   GitHub Actions 推送 tag 自动构建、按本更新日志生成 Release（`.dmg` + `.zip`）。
 
-[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/tmpbin/HapticBreak/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/tmpbin/HapticBreak/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tmpbin/HapticBreak/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/tmpbin/HapticBreak/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/tmpbin/HapticBreak/releases/tag/v1.0.1

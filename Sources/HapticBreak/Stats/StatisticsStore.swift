@@ -188,10 +188,16 @@ final class StatisticsStore {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([String: DayStat].self, from: data)
-        else { return }
-        days = decoded
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        if let decoded = try? JSONDecoder().decode([String: DayStat].self, from: data) {
+            days = decoded
+        } else {
+            // Unreadable statistics (e.g. a bad schema change): move the file aside instead of
+            // letting the next save() silently overwrite the whole history with an empty set.
+            let backup = fileURL.deletingPathExtension().appendingPathExtension("corrupt.json")
+            try? FileManager.default.removeItem(at: backup)
+            try? FileManager.default.moveItem(at: fileURL, to: backup)
+        }
     }
 
     private func save() { writeToDisk(days, sync: false) }

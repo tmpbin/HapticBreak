@@ -40,7 +40,22 @@ final class TouchGestureMonitor {
     private init() {}
 
     /// Whether the private contact-frame API resolved and at least one multitouch device exists.
+    /// Probing enumerates devices (`MTDeviceCreateList`) — too heavy for per-render UI checks and
+    /// per-settings-change re-evaluation (e.g. while dragging a slider), so the result is cached
+    /// briefly; a hot-plugged external trackpad still shows up within seconds. Main-thread only.
     static var isSupported: Bool {
+        if let cached = supportCache, Date().timeIntervalSince(cached.at) < supportCacheTTL {
+            return cached.value
+        }
+        let value = probeSupport()
+        supportCache = (value, Date())
+        return value
+    }
+
+    private static var supportCache: (value: Bool, at: Date)?
+    private static let supportCacheTTL: TimeInterval = 5
+
+    private static func probeSupport() -> Bool {
         guard let mt = MultitouchSupport.shared,
               mt.registerContactFrameCallback != nil,
               mt.deviceStart != nil,

@@ -65,6 +65,12 @@ final class AppController: NSObject, BreakTimerDelegate {
     // MARK: - Lifecycle
 
     func start() {
+        // Launch-at-login truth lives in SMAppService (it persists across launches and can be
+        // changed behind our back in System Settings → Login Items); align the stored preference
+        // on startup so the Settings toggle never shows a stale state.
+        if settings.launchAtLogin != LoginItem.isEnabled {
+            settings.launchAtLogin = LoginItem.isEnabled
+        }
         restoreScene()
         menuBar.install()
         registerShortcutsIfNeeded()
@@ -191,8 +197,10 @@ final class AppController: NSObject, BreakTimerDelegate {
             detectCounter = (detectCounter + 1) % Self.detectCadence
         }
 
+        // Deferring (typing past the deadline) still counts as active work — the user is
+        // demonstrably at the keyboard.
         let active = timer.tick(idleSeconds: idle, externalSuppress: suppressCache)
-        if active && !timer.isDeferring { stats.addActiveSecond() }
+        if active { stats.addActiveSecond() }
         panelBeatIfNeeded()
     }
 
@@ -214,6 +222,7 @@ final class AppController: NSObject, BreakTimerDelegate {
     /// "Focus for 90 minutes": one long work segment, then the normal reminding flow — the next
     /// cycle returns to the configured rhythm on its own. Cancels any quiet scene (focusing = running).
     func startFocusScene() {
+        restConfirmer.cancel()   // Choosing to focus = explicitly not resting now
         clearScene()
         timer.startTemporaryWork(seconds: 90 * 60)
         syncViewModel()
@@ -221,6 +230,7 @@ final class AppController: NSObject, BreakTimerDelegate {
 
     /// Start a bounded quiet scene (meeting = 1 hour; day = until ~4 AM tomorrow).
     func startQuietScene(_ kind: QuietScene) {
+        restConfirmer.cancel()   // Entering a quiet scene declines the pending reminder
         sceneKind = kind
         switch kind {
         case .meeting: sceneUntil = Date().addingTimeInterval(60 * 60)
@@ -318,7 +328,10 @@ final class AppController: NSObject, BreakTimerDelegate {
     }
 
     /// Reminding cap reached without acknowledgment → silently auto-postpone.
+    /// The honest-rest window is voided with it: the reminder went unanswered, so a later idle
+    /// spell must not retroactively count as a rest.
     func breakTimerDidAutoPostpone(_ timer: BreakTimer) {
+        restConfirmer.cancel()
         menuBar.pulse()
         menuBar.closeAfterReminderResolved()
     }
@@ -392,8 +405,10 @@ final class AppController: NSObject, BreakTimerDelegate {
     // MARK: - Actions
 
     func toggleManualPause() { timer.toggleManualPause() }
-    func skip()              { timer.skip(); stats.recordSkip() }
-    func postpone()          { timer.postpone(minutes: settings.postponeMinutes); stats.recordPostpone() }
+    // Skip / postpone explicitly decline the pending reminder — void the honest-rest window,
+    // otherwise stepping away shortly after would count both a skip AND a break for one reminder.
+    func skip()              { restConfirmer.cancel(); timer.skip(); stats.recordSkip() }
+    func postpone()          { restConfirmer.cancel(); timer.postpone(minutes: settings.postponeMinutes); stats.recordPostpone() }
     func breakNow()          { timer.fireNow() }
     /// Acknowledge the current reminder (no-op outside the reminding phase).
     func acknowledge(_ method: AckMethod) { timer.acknowledge(method) }
@@ -401,6 +416,8 @@ final class AppController: NSObject, BreakTimerDelegate {
     /// Editor preview: design reference (unaffected by global scaling, so you hear exactly the designed strength).
     func testPattern(_ p: HapticPattern) { player.playDesign(p) }
     func testStep(_ step: HapticStep)    { player.testStepDesign(step) }
+    /// Recorder playback: like `testStep` but without drag-coalescing — every beat must sound.
+    func auditionStep(_ step: HapticStep) { player.auditionStepDesign(step) }
     func openSettings()      { windows.showSettings() }
     func openStatistics()    { windows.showStatistics() }
     func openPatternEditor() { windows.showPatternEditor() }

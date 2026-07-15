@@ -12,7 +12,7 @@ enum FullscreenDetector {
         guard let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
             return false
         }
-        // Ignore Finder (desktop) and ourselves.
+        // Ignore ourselves (our own overlay/popover windows must never count as fullscreen).
         let ourPID = ProcessInfo.processInfo.processIdentifier
         if frontPID == ourPID { return false }
 

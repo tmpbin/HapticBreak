@@ -31,4 +31,14 @@ final class RestConfirmerTests: XCTestCase {
         XCTAssertFalse(rc.tick(idleSeconds: 60, now: t0.addingTimeInterval(130)),
                        "leaving after voiding doesn't back-fill a count")
     }
+
+    func testCancelVoidsPendingWindow() {
+        var rc = RestConfirmer()
+        let t0 = Date()
+        rc.didFire(at: t0)
+        rc.cancel()   // skip / postpone / auto-postpone declined the reminder
+        XCTAssertFalse(rc.isPending, "cancel clears the pending window")
+        XCTAssertFalse(rc.tick(idleSeconds: 60, now: t0.addingTimeInterval(10)),
+                       "stepping away after declining must not count as a rest")
+    }
 }

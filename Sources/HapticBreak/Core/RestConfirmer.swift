@@ -20,6 +20,12 @@ struct RestConfirmer {
         pendingSince = now
     }
 
+    /// The reminder was abandoned without resting (skip / postpone / auto-postpone / quiet scene):
+    /// void the pending window, so a later idle spell can't count a rest the user explicitly declined.
+    mutating func cancel() {
+        pendingSince = nil
+    }
+
     /// Call every second. Returns `true` when "a real rest is confirmed", at which point the caller
     /// should record a break.
     mutating func tick(idleSeconds: TimeInterval, now: Date = Date()) -> Bool {

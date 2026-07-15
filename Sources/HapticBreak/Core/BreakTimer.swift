@@ -154,8 +154,10 @@ final class BreakTimer {
         }
 
         // 2) Compute pause reason: manual > external (fullscreen/Focus) > idle.
-        //    While reminding, idle is not a pause — it's the implicit acknowledgment (handled below).
-        let idlePaused = phase != .reminding
+        //    Idle pauses only the work segment: while reminding it's the implicit acknowledgment
+        //    (handled below), and while resting, being away IS the rest — freezing the rest
+        //    countdown would punish exactly the behavior the app asks for.
+        let idlePaused = phase == .working
             && settings.idleEnabled && idleSeconds >= Double(settings.idlePauseSeconds)
         let newReason: PauseReason
         if manualPaused { newReason = .manual }
