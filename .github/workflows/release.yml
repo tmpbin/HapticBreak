@@ -236,4 +236,6 @@ jobs:
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -qm "cask: bump hapticbreak to $VERSION" || { echo "cask 无变化，跳过。"; exit 0; }
           git push -q origin HEAD
-          echo "==> 已同步 tap 的 cask 到 $VERSION（sha256 $SHA256）。"
+          # 变量名后紧跟全角字符时，runner 的 bash 3.2 会把多字节字符并入变量名（set -u 下
+          # 报 unbound variable），必须用花括号显式界定。
+          echo "==> 已同步 tap 的 cask 到 ${VERSION}（sha256 ${SHA256}）。"
