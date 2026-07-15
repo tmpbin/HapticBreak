@@ -3,6 +3,15 @@
     <channel>
         <title>HapticBreak</title>
         <item>
+            <title>1.3.0</title>
+            <pubDate>Wed, 15 Jul 2026 09:20:04 +0000</pubDate>
+            <link>https://github.com/tmpbin/HapticBreak</link>
+            <sparkle:version>10300</sparkle:version>
+            <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.3.0/HapticBreak-1.3.0.zip" length="2431452" type="application/octet-stream" sparkle:edSignature="XC31uhiEH+PP+eJkygdj2O5PU2tRp3reiefAOjJOdF9ZOprl5mOKJGc9ysbN7ZtZ8jqYvW41j5ZIA/i46MwGAQ=="/>
+        </item>
+        <item>
             <title>1.2.0</title>
             <pubDate>Thu, 09 Jul 2026 18:25:07 +0000</pubDate>
             <link>https://github.com/tmpbin/HapticBreak</link>
