@@ -70,12 +70,16 @@ final class BreakTimer {
     private var manualPaused = false
     private var idleResetArmed = false   // Whether the current idle cycle has already performed a "timer reset"
 
-    // Wall-clock anchoring: the countdown subtracts the *measured* elapsed time between ticks, not
-    // "one second per tick" — App Nap timer coalescing, a busy main thread, or missed ticks would
-    // otherwise silently stretch a 25-minute interval.
+    // Wall-clock anchoring: the countdown nominally steps one second per tick, and the *measured*
+    // deviation from that cadence accumulates in `driftSeconds` — App Nap timer coalescing, a busy
+    // main thread, or missed ticks would otherwise silently stretch a 25-minute interval.
     private var lastTick: Date
-    /// Fractional elapsed seconds carried to the next tick (whole seconds are applied immediately).
-    private var elapsedCarry: Double = 0
+    /// Accumulated deviation between measured elapsed time and the nominal one-second-per-tick
+    /// cadence. Corrections apply **only once a whole second has accumulated** (a deadband):
+    /// scheduler jitter (the tick timer's ±100 ms leeway) must never surface as 0/2-second steps —
+    /// the panel's second hand would visibly stall and then jump — while real delays still catch
+    /// up in whole seconds the moment they amount to one.
+    private var driftSeconds: Double = 0
     /// A tick gap longer than this is a discontinuity (system sleep / clock jump), not work time —
     /// only the cap is counted. Long absences are the idle reset / idle pause's job, not the clock's.
     private static let maxCountedGap: TimeInterval = 60
@@ -197,15 +201,24 @@ final class BreakTimer {
         pauseReason = newReason
 
         if pauseReason.isPaused {
-            elapsedCarry = 0   // Paused time never counts toward the countdown
+            driftSeconds = 0   // Paused time never counts toward the countdown
             if changed { delegate?.breakTimerStateChanged(self) }
             return false
         }
 
-        // Whole seconds to apply this tick (the fraction carries forward).
-        elapsedCarry += min(max(gap, 0), Self.maxCountedGap)
-        let seconds = Int(elapsedCarry)
-        elapsedCarry -= Double(seconds)
+        // Whole seconds to apply this tick: nominally 1, corrected only when the accumulated
+        // deviation reaches a full second (see `driftSeconds` — jitter is absorbed, real delays
+        // catch up, a fast-running clock stalls one step).
+        driftSeconds += min(max(gap, 0), Self.maxCountedGap) - 1
+        var seconds = 1
+        if driftSeconds >= 1 {
+            let catchUp = Int(driftSeconds)
+            seconds += catchUp
+            driftSeconds -= Double(catchUp)
+        } else if driftSeconds <= -1 {
+            seconds = 0
+            driftSeconds += 1
+        }
 
         // 3) Reminding phase: wait for acknowledgment, re-nudging gently on a bounded schedule
         if phase == .reminding {

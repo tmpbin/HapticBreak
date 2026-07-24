@@ -264,9 +264,10 @@ struct CountdownRing: View {
             EnergyBullet(head: anim.bulletHead, opacity: anim.bulletOpacity,
                          color: color, lineWidth: lineWidth, geo: geo)
 
-            // Second hand: sweeps 6°/s clockwise; natural −1 s ticks animate one step, jumps
-            // (skip/postpone/interval change/reset/resume) snap without animation, and the per-minute
-            // recoil is triggered by the logical truth model.lit — all diffed inside the ornament.
+            // Second hand: sweeps 6°/s clockwise; natural ticks (and one-second catch-ups) animate
+            // as a sweep, real jumps (skip/postpone/interval change/reset/resume) snap without
+            // animation, and the per-minute recoil is triggered by the logical truth model.lit —
+            // all diffed inside the ornament.
             SecondHandOrnament(color: color,
                                lineWidth: lineWidth,
                                remaining: remaining,

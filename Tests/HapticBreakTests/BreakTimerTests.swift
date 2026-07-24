@@ -389,7 +389,36 @@ final class BreakTimerTests: HBTestCase {
         XCTAssertEqual(t.remaining, 1499, "counting resumes normally after the pause")
     }
 
-    func testFractionalSecondsCarryBetweenTicks() {
+    func testSchedulerJitterNeverStallsOrDoubleSteps() {
+        // Regression lock: the tick timer's ±100 ms leeway must be absorbed by the drift deadband.
+        // The naive fractional-carry quantization turned boundary-hovering jitter into visible
+        // 0-then-2-second steps — the panel's second hand stalled and jumped.
+        let (t, _, advance) = makeWallClockTimer()
+        var expected = 1500
+        for i in 0..<20 {
+            advance(i.isMultiple(of: 2) ? 0.95 : 1.05)
+            _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+            expected -= 1
+            XCTAssertEqual(t.remaining, expected,
+                           "jittered ticks must surface as exactly one second each (tick \(i))")
+        }
+    }
+
+    func testAccumulatedDelayCatchesUpInWholeSeconds() {
+        let (t, _, advance) = makeWallClockTimer()
+        // Four ticks each 0.25 s late (exact in binary — the deadband threshold is a float
+        // comparison): drift reaches a full second on the fourth tick and corrects there.
+        for _ in 0..<3 {
+            advance(1.25)
+            _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        }
+        XCTAssertEqual(t.remaining, 1497, "sub-second drift is not applied early")
+        advance(1.25)
+        _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        XCTAssertEqual(t.remaining, 1495, "one accumulated second catches up as a single 2s step")
+    }
+
+    func testSubSecondTicksAccumulate() {
         let (t, _, advance) = makeWallClockTimer()
         for _ in 0..<4 {
             advance(0.5)

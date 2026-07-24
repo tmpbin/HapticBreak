@@ -297,7 +297,9 @@ final class SecondHandOrnamentView: NSView {
             self.remaining = remaining
             if prev == .min {
                 snap(to: remaining)
-            } else if active && prev - remaining == 1 {
+            } else if active, (1...2).contains(prev - remaining) {
+                // Natural tick, or a one-second catch-up (accumulated timer delay): sweep — a
+                // small catch-up should read as the hand hurrying, not teleporting.
                 sweep(from: prev, to: remaining)
                 tickPulse()
             } else {
