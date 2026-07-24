@@ -9,7 +9,7 @@ struct SettingsView: View {
 
     /// Action entry points only — deliberately NOT `@ObservedObject`: the view model ticks (`remaining`)
     /// once per second, and this window stays alive after close (WindowManager reuse). Observing it would
-    /// re-layout the whole hidden form every second (docs/PANEL_CPU_INVESTIGATION.md §12).
+    /// re-layout the whole hidden form every second (the idle-CPU regression fixed in 1.2.0).
     let viewModel: AppViewModel
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared

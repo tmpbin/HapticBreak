@@ -116,6 +116,39 @@ final class BreakTimerTests: HBTestCase {
         XCTAssertEqual(t.remaining, min(5 * 60, t.total), "postpone minutes on the clock, capped at one interval")
     }
 
+    // MARK: - Teaching hint (fires once per reminding cycle, on the nudge reaching min(3, cap))
+
+    func testHintFiresOnceOnThirdNudge() {
+        let (t, d) = makeTimer { s in s.remindPulseMax = 6 }
+        tick(t, 60)                       // initial fire = nudge 1
+        tick(t, 10)                       // nudge 2
+        XCTAssertEqual(d.pulses, 1)
+        XCTAssertEqual(d.hints, 0, "no hint before the third nudge")
+        tick(t, 10)                       // nudge 3
+        XCTAssertEqual(d.pulses, 2)
+        XCTAssertEqual(d.hints, 1, "teaching hint fires on the third nudge")
+        tick(t, 10)                       // nudge 4
+        XCTAssertEqual(d.hints, 1, "hint fires only once per reminding cycle")
+    }
+
+    func testHintWithLowCapRidesTheLastNudge() {
+        let (t, d) = makeTimer()          // remindPulseMax = 2
+        tick(t, 60)
+        tick(t, 10)                       // nudge 2 = min(3, cap 2)
+        XCTAssertEqual(d.pulses, 1)
+        XCTAssertEqual(d.hints, 1, "with cap below 3, the hint still lands on the last nudge")
+    }
+
+    func testHintWithCapOneRidesTheInitialFire() {
+        let (t, d) = makeTimer { s in s.remindPulseMax = 1 }
+        tick(t, 60)
+        XCTAssertEqual(d.fires, 1)
+        XCTAssertEqual(d.hints, 1, "cap 1: the initial fire is the only nudge, the hint rides on it")
+        tick(t, 10)
+        XCTAssertEqual(d.autoPostpones, 1)
+        XCTAssertEqual(d.hints, 1)
+    }
+
     func testStepAwayAcknowledgesImplicitly() {
         let (t, d) = makeTimer()
         tick(t, 60)

@@ -209,7 +209,8 @@ private struct BreathingHalo: View {
 /// - **L2 `RingAnimator`** (presentation logic): events → bullet/burst/retract timeline, holds all animation state.
 /// - **L3 subviews** (pure render): `MinuteArc / EnergyBullet / ImpactBurst / CenterReadout` in SwiftUI, plus the
 ///   **continuous** ornaments `ShimmerOrnament / SecondHandOrnament` on Core Animation layers (RingOrnaments.swift) —
-///   render-server interpolation keeps the open panel at the no-animation CPU baseline (docs/PANEL_CPU_INVESTIGATION.md §9).
+///   render-server interpolation keeps the open panel at the no-animation CPU baseline (measured
+///   ~10% → ~1%; the full rationale lives in RingOrnaments.swift's header comment).
 /// Data flows one way, downward; the deduction decision **no longer lives in the view's onChange self re-read**
 /// (which was the root cause of the first grid being swallowed).
 struct CountdownRing: View {

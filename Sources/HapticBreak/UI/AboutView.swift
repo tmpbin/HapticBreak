@@ -5,7 +5,7 @@ import SwiftUI
 /// together with the hidden Haptic Lab entry (tap the actuator row 5 times).
 struct AboutView: View {
     /// Actions only — NOT `@ObservedObject` (the view model ticks per second; this window stays alive
-    /// after close, see docs/PANEL_CPU_INVESTIGATION.md §12). Backend fields come from `backend` below.
+    /// after close — the idle-CPU regression fixed in 1.2.0). Backend fields come from `backend` below.
     let viewModel: AppViewModel
     /// The rarely-changing backend identity/health — safe to observe from a hidden-but-alive window.
     @ObservedObject private var backend: BackendStatus

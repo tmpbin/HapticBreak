@@ -3,8 +3,8 @@ import AppKit
 import CoreImage
 
 // The ring's two *continuous* ornaments — the orbiting shimmer and the sweeping second hand — are
-// implemented on Core Animation layers instead of SwiftUI animations. Rationale (measured, see
-// docs/PANEL_CPU_INVESTIGATION.md §9): SwiftUI's `repeatForever` / chained `withAnimation` drive the
+// implemented on Core Animation layers instead of SwiftUI animations. Rationale (measured
+// on-device): SwiftUI's `repeatForever` / chained `withAnimation` drive the
 // whole hosting view's ViewGraph **in-process on every frame** (~10% CPU at 120Hz with the panel open),
 // while a `CABasicAnimation` is interpolated out-of-process by the render server — the app commits
 // O(1) transactions per second and measures at the no-animation baseline (~1%).

@@ -10,7 +10,8 @@ struct TodayRhythm: Equatable {
 /// Haptic backend identity/health (shown in About and the panel's warning row). Lives in its own
 /// observable, apart from `AppViewModel`: `remaining` fires `objectWillChange` every second, and any
 /// hidden-but-alive auxiliary window observing the view model would re-layout + redraw once per tick
-/// in the background (see docs/PANEL_CPU_INVESTIGATION.md §12). Auxiliary windows must observe only
+/// in the background (measured ~3% idle CPU; the regression fixed in 1.2.0 — see CHANGELOG).
+/// Auxiliary windows must observe only
 /// this (rarely changing) object — never the whole view model.
 final class BackendStatus: ObservableObject {
     @Published var name: String = ""
