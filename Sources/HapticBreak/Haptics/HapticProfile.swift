@@ -24,7 +24,8 @@ final class HapticProfile: ObservableObject {
 
     private let lock = NSLock()
     private var snap: (soft: Int32, crisp: Int32, buzz: Int32)
-    private let store = UserDefaults.standard
+    /// Shared preference store (in-memory in ephemeral runs — never bypass to UserDefaults directly).
+    private let store: KeyValueStore = RuntimeMode.settingsDefaults()
 
     private enum Key {
         static let soft  = "hb.profile.softID"

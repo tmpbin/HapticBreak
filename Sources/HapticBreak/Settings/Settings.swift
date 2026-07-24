@@ -109,6 +109,21 @@ final class Settings: ObservableObject {
         set { defaults.set(newValue, forKey: Key.seenPanelIntro.full) }
     }
 
+    // MARK: - Quiet-scene persistence (orchestrated by AppController; survives restarts)
+    // Not @Published: scenes act through the suppression probe on the next tick, not through the
+    // settings broadcast. Kept here (rather than raw UserDefaults in the controller) so ephemeral
+    // runs stay fully isolated via the injected store.
+    var sceneUntil: Date? {
+        get { (defaults.object(forKey: Key.sceneUntil.full) as? Double).map(Date.init(timeIntervalSince1970:)) }
+        set { defaults.set(newValue?.timeIntervalSince1970, forKey: Key.sceneUntil.full) }
+    }
+
+    /// Raw `QuietScene` value; the controller owns the interpretation.
+    var sceneKindRaw: String? {
+        get { defaults.object(forKey: Key.sceneKind.full) as? String }
+        set { defaults.set(newValue, forKey: Key.sceneKind.full) }
+    }
+
     // MARK: - Derived
     var workMinutes: Int { breakIntervalMinutes }
 
@@ -148,6 +163,21 @@ final class Settings: ObservableObject {
     func deleteCustomPattern(id: String) {
         customPatterns.removeAll { $0.id == id }
         if selectedPatternID == id { selectedPatternID = Default.pattern }
+    }
+
+    /// Import with dedupe: a pattern whose name and beats match an existing custom pattern is the
+    /// same pattern re-imported (imports always mint fresh IDs) — skip it instead of duplicating.
+    /// Returns the number actually added. Appends in one assignment (one persist + broadcast).
+    @discardableResult
+    func importCustomPatterns(_ patterns: [HapticPattern]) -> Int {
+        var merged = customPatterns
+        for pattern in patterns
+        where !merged.contains(where: { $0.name == pattern.name && $0.hasSameSteps(as: pattern) }) {
+            merged.append(pattern)
+        }
+        let added = merged.count - customPatterns.count
+        if added > 0 { customPatterns = merged }
+        return added
     }
 
     // MARK: - Factory defaults (init read fallbacks and "restore defaults" share one source of truth, preventing drift between the two)
@@ -274,6 +304,10 @@ final class Settings: ObservableObject {
         case login, shortcuts, hotKeys, autoUpdate, backend
         case customPatterns
         case hasLaunched, seenPanelIntro
+        // Explicit raw values keep the historical key strings ("hb.scene.until" / "hb.scene.kind")
+        // that used to live in AppController.
+        case sceneUntil = "scene.until"
+        case sceneKind = "scene.kind"
 
         var full: String { "hb." + rawValue }
     }
@@ -326,7 +360,8 @@ final class Settings: ObservableObject {
                 defaults.set(0, forKey: Key.restMinutes.full)
             }
         }
-        for legacy in ["hb.pomodoro", "hb.pomoWork", "hb.pomoBreak", "hb.reminderRepeat", "hb.escalation"] {
+        for legacy in ["hb.pomodoro", "hb.pomoWork", "hb.pomoBreak", "hb.reminderRepeat", "hb.escalation"]
+        where defaults.object(forKey: legacy) != nil {
             defaults.set(nil, forKey: legacy)
         }
     }

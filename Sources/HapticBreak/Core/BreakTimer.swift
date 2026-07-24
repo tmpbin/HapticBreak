@@ -29,6 +29,10 @@ enum AckMethod {
 protocol BreakTimerDelegate: AnyObject {
     /// Work segment ended: the reminder fires (first nudge of the reminding phase).
     func breakTimerDidFire(_ timer: BreakTimer)
+    /// A manual "buzz now" (`fireNow`): plays the reminder but is NOT a real deadline — it must not
+    /// open the honest-rest confirmation window, or a test buzz followed by stepping away would
+    /// inflate the break statistics.
+    func breakTimerDidFireManually(_ timer: BreakTimer)
     /// Reminding phase: a follow-up nudge (the reminder hasn't been acknowledged yet).
     /// Every nudge replays the full user preset identically.
     func breakTimerPulse(_ timer: BreakTimer)
@@ -47,11 +51,16 @@ protocol BreakTimerDelegate: AnyObject {
     func breakTimerStateChanged(_ timer: BreakTimer)
 }
 
-/// Reminder countdown state machine. Driven once per second by the outside (AppController) via `tick`.
+/// Reminder countdown state machine. Driven about once per second by the outside (AppController)
+/// via `tick`; the countdown itself is anchored to the wall clock (see `tick`), so delayed or
+/// coalesced ticks can never stretch the interval.
 final class BreakTimer {
 
     weak var delegate: BreakTimerDelegate?
     private let settings: Settings
+    /// Injectable clock for deterministic tests. Contract: read **exactly once per `tick`** (tests
+    /// rely on this to drive "one tick = one second" with an auto-advancing clock).
+    private let now: () -> Date
 
     private(set) var phase: BreakPhase = .working
     private(set) var pauseReason: PauseReason = .none
@@ -60,6 +69,16 @@ final class BreakTimer {
 
     private var manualPaused = false
     private var idleResetArmed = false   // Whether the current idle cycle has already performed a "timer reset"
+
+    // Wall-clock anchoring: the countdown subtracts the *measured* elapsed time between ticks, not
+    // "one second per tick" — App Nap timer coalescing, a busy main thread, or missed ticks would
+    // otherwise silently stretch a 25-minute interval.
+    private var lastTick: Date
+    /// Fractional elapsed seconds carried to the next tick (whole seconds are applied immediately).
+    private var elapsedCarry: Double = 0
+    /// A tick gap longer than this is a discontinuity (system sleep / clock jump), not work time —
+    /// only the cap is counted. Long absences are the idle reset / idle pause's job, not the clock's.
+    private static let maxCountedGap: TimeInterval = 60
 
     /// One-cycle work length override (the "focus for 90 minutes" scene): consumed when the cycle
     /// expires into reminding, cleared by any action that abandons the cycle (skip / restart / reset).
@@ -83,8 +102,10 @@ final class BreakTimer {
     /// Matches `RestConfirmer.idleThreshold`, so the honest-rest confirmation follows naturally.
     private let ackIdleThreshold: TimeInterval = 30
 
-    init(settings: Settings) {
+    init(settings: Settings, now: @escaping () -> Date = Date.init) {
         self.settings = settings
+        self.now = now
+        self.lastTick = now()
         configureForCurrentPhase(reset: true)
     }
 
@@ -134,13 +155,20 @@ final class BreakTimer {
 
     // MARK: - Per-second driver
 
-    /// Called once per second by the outside.
+    /// Called about once per second by the outside.
     /// - Parameters:
     ///   - idleSeconds: Seconds since the last input.
     ///   - externalSuppress: External suppression reason (fullscreen/Focus), nil if none.
     /// - Returns: Whether this second counts as "active work time".
     @discardableResult
     func tick(idleSeconds: TimeInterval, externalSuppress: PauseReason?) -> Bool {
+        // 0) Measure the real elapsed wall time since the previous tick (the clock is read exactly
+        //    once per tick — see `now`). Negative gaps (clock set back) count as zero; gaps beyond
+        //    `maxCountedGap` count only the cap.
+        let tickDate = now()
+        let gap = tickDate.timeIntervalSince(lastTick)
+        lastTick = tickDate
+
         // 1) Compute idle reset (work segment only, enabled and threshold > 0)
         if settings.idleEnabled, settings.idleResetMinutes > 0, phase == .working {
             if idleSeconds >= Double(settings.idleResetMinutes * 60) {
@@ -169,13 +197,19 @@ final class BreakTimer {
         pauseReason = newReason
 
         if pauseReason.isPaused {
+            elapsedCarry = 0   // Paused time never counts toward the countdown
             if changed { delegate?.breakTimerStateChanged(self) }
             return false
         }
 
+        // Whole seconds to apply this tick (the fraction carries forward).
+        elapsedCarry += min(max(gap, 0), Self.maxCountedGap)
+        let seconds = Int(elapsedCarry)
+        elapsedCarry -= Double(seconds)
+
         // 3) Reminding phase: wait for acknowledgment, re-nudging gently on a bounded schedule
         if phase == .reminding {
-            tickReminding(idleSeconds: idleSeconds)
+            tickReminding(idleSeconds: idleSeconds, seconds: seconds)
             delegate?.breakTimerStateChanged(self)
             return false
         }
@@ -187,14 +221,14 @@ final class BreakTimer {
             delegate?.breakTimerWillFireSoon(self)
         }
 
-        // 5) Decrement (never below 0)
-        if remaining > 0 { remaining -= 1 }
+        // 5) Decrement by the elapsed whole seconds (never below 0)
+        if remaining > 0 { remaining = max(0, remaining - seconds) }
 
         // 6) Expiry: typing-aware defer (CR-01) or normal expiry
         if remaining <= 0 {
             if phase == .working, settings.typingAwareDefer,
                idleSeconds < typingPauseThreshold, deferredSeconds < maxDeferSeconds {
-                deferredSeconds += 1
+                deferredSeconds += max(1, seconds)
                 if !isDeferring { isDeferring = true }
                 delegate?.breakTimerStateChanged(self)
                 return true   // Still working (typing)
@@ -208,16 +242,16 @@ final class BreakTimer {
     /// One reminding-phase second: implicit acknowledgment when the user actually steps away;
     /// otherwise replay the full user preset every `remindPulseSeconds`, auto-postponing at the cap.
     /// The teaching hint fires once per cycle, on the nudge that reaches `min(3, cap)`.
-    private func tickReminding(idleSeconds: TimeInterval) {
+    private func tickReminding(idleSeconds: TimeInterval, seconds: Int) {
         if idleSeconds >= ackIdleThreshold {
             completeAcknowledge(.stepAway)
             return
         }
-        remindingSeconds += 1
+        remindingSeconds += seconds
         guard remindingSeconds >= nextPulseAt else { return }
         if settings.typingAwareDefer, idleSeconds < typingPauseThreshold,
            pulseDeferSeconds < maxDeferSeconds {
-            pulseDeferSeconds += 1
+            pulseDeferSeconds += max(1, seconds)
             return
         }
         pulseDeferSeconds = 0
@@ -339,12 +373,13 @@ final class BreakTimer {
     }
 
     /// Fire a one-shot reminder immediately and restart the work segment (a manual "buzz now";
-    /// does not enter the reminding phase).
+    /// does not enter the reminding phase). Deliberately NOT `breakTimerDidFire`: a manual buzz is
+    /// not a real deadline and must not open the honest-rest confirmation window.
     func fireNow() {
         workOverrideSeconds = nil
         resetCycleFlags()
         phase = .working
-        delegate?.breakTimerDidFire(self)
+        delegate?.breakTimerDidFireManually(self)
         configureForCurrentPhase(reset: true)
         delegate?.breakTimerStateChanged(self)
     }

@@ -13,6 +13,9 @@ struct SettingsView: View {
     let viewModel: AppViewModel
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var l10n = L10n.shared
+    /// Rare-change observable (updates only when shortcuts are re-registered) — surfaces combos the
+    /// system rejected because another app already owns them.
+    @ObservedObject private var hotKeyManager = HotKeyManager.shared
     @State private var showResetConfirm = false
     @State private var tab: Tab
 
@@ -236,8 +239,17 @@ struct SettingsView: View {
             } header: {
                 Text(L.t("settings.section.hotkeys"))
             } footer: {
-                Text(L.t("settings.hotkeysFooter"))
-                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    if !hotKeyManager.failedBindings.isEmpty {
+                        Label(L.t("hotkey.conflictWarning",
+                                  hotKeyManager.failedBindings.joined(separator: "  ")),
+                              systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                    Text(L.t("settings.hotkeysFooter"))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
             }
 
             Section {

@@ -24,11 +24,16 @@ enum RuntimeMode {
             || CommandLine.arguments.contains("--rendershots")
     }()
 
-    /// Preference storage choice for `Settings.shared`: normally `.standard`, ephemeral runs use a pure
-    /// in-memory implementation (zero disk footprint).
-    static func settingsDefaults() -> KeyValueStore {
+    /// The single shared preference store behind every preference singleton (`Settings` /
+    /// `HapticProfile` / `L10n`, plus the quiet-scene state persisted via `Settings`): normally
+    /// `.standard`, one shared in-memory instance for ephemeral runs. No preference persistence may
+    /// bypass this to `UserDefaults.standard` directly — that would silently punch a hole in the
+    /// ephemeral isolation.
+    static let preferenceStore: KeyValueStore =
         isEphemeral ? InMemoryKeyValueStore() : UserDefaults.standard
-    }
+
+    /// Preference storage choice for the preference singletons (see `preferenceStore`).
+    static func settingsDefaults() -> KeyValueStore { preferenceStore }
 
     /// Statistics file choice for `StatisticsStore.shared`: normally App Support, ephemeral runs use a temp directory.
     static func statsFileURL() -> URL {

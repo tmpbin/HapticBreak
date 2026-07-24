@@ -27,8 +27,7 @@ final class UpdaterController: NSObject {
                 startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         } else {
             controller = nil
-            NSLog("HapticBreak: update public key (SUPublicEDKey) not configured; in-app updates disabled. "
-                + "Run packaging/autoupdate/setup-keys.sh to generate keys, then repackage to enable.")
+            Log.updates.notice("Update public key (SUPublicEDKey) not configured; in-app updates disabled. Run packaging/autoupdate/setup-keys.sh to generate keys, then repackage to enable.")
         }
         super.init()
         applyAutoCheck()

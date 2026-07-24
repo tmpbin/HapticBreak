@@ -136,11 +136,15 @@ final class MenuBarController: NSObject {
     private func startFlash() {
         flashToggle = false
         applyFlashTint()
-        flashTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.flashToggle.toggle()
             self.applyFlashTint()
         }
+        // .common: a default-mode timer freezes whenever the user tracks any menu — the reminding
+        // flash would stall exactly while they're looking at the menu bar.
+        RunLoop.main.add(timer, forMode: .common)
+        flashTimer = timer
     }
 
     private func stopFlash() {

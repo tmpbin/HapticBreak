@@ -21,15 +21,22 @@ final class AppController: NSObject, BreakTimerDelegate {
     private let aux = AuxReminder()
 
     private var tickTimer: DispatchSourceTimer?
+    /// App Nap suppression token (see `start()`); held for the app's lifetime.
+    private var activityToken: NSObjectProtocol?
     private var lastWorkSeconds: Int
     private var lastEnableShortcuts: Bool
     private var lastHotKeys: HotKeyBindings
 
     /// Cached environment suppression (fullscreen / mic / focus). These probes are relatively expensive and
-    /// the state changes slowly, so they are re-evaluated only every `detectCadence` ticks (see `onTick`).
+    /// the state changes slowly, so they are re-evaluated only every `detectCadence` ticks (see `onTick`),
+    /// and run **off the main thread**: window-server enumeration + file read/JSON parse + CoreAudio were
+    /// a fixed main-thread tax every 3 s. The result lands one hop later — well within the cache's own
+    /// staleness budget.
     private var suppressCache: PauseReason?
     private var detectCounter = 0
     private static let detectCadence = 3
+    private let probeQueue = DispatchQueue(label: "com.aremind.hapticbreak.probes", qos: .utility)
+    private var probeInFlight = false
 
     /// "Honest rest": only count a break when the user actually steps away after a reminder.
     private var restConfirmer = RestConfirmer()
@@ -38,12 +45,11 @@ final class AppController: NSObject, BreakTimerDelegate {
     private var micActiveSince: Date?
     private static let micPauseCap: TimeInterval = 90 * 60
 
-    /// Active quiet scene (nil = none). Persisted so "done for today" survives an app restart;
-    /// expiry is checked by the environment probe and clears itself.
+    /// Active quiet scene (nil = none). Persisted via `Settings` so "done for today" survives an
+    /// app restart (and ephemeral runs stay isolated); expiry is checked by the environment probe
+    /// and clears itself.
     private var sceneUntil: Date?
     private var sceneKind: QuietScene?
-    private static let sceneUntilKey = "hb.scene.until"
-    private static let sceneKindKey = "hb.scene.kind"
     private lazy var menuBar = MenuBarController(viewModel: viewModel)
     private lazy var windows = WindowManager(viewModel: viewModel)
 
@@ -74,6 +80,13 @@ final class AppController: NSObject, BreakTimerDelegate {
         restoreScene()
         menuBar.install()
         registerShortcutsIfNeeded()
+        // Keep the 1 Hz tick trustworthy: without an activity assertion, App Nap coalesces a
+        // windowless accessory app's timers by seconds to minutes. Idle *system* sleep stays
+        // allowed — a break reminder must never keep the Mac awake. (BreakTimer's wall-clock
+        // anchoring covers whatever drift remains.)
+        activityToken = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "HapticBreak break countdown")
         startTick()
         syncViewModel()
         refreshStreak()
@@ -193,7 +206,7 @@ final class AppController: NSObject, BreakTimerDelegate {
             suppressCache = nil
             detectCounter = 0
         } else {
-            if detectCounter == 0 { suppressCache = evaluateSuppression() }
+            if detectCounter == 0 { refreshSuppression() }
             detectCounter = (detectCounter + 1) % Self.detectCadence
         }
 
@@ -204,17 +217,39 @@ final class AppController: NSObject, BreakTimerDelegate {
         panelBeatIfNeeded()
     }
 
-    /// Evaluate the (relatively expensive) environment suppressors — probing only what the user enabled.
-    /// An active quiet scene outranks the probes (it's an explicit user decision); expiry clears it here.
-    private func evaluateSuppression() -> PauseReason? {
+    /// Re-evaluate the environment suppressors. The quiet scene outranks the probes (an explicit
+    /// user decision) and is pure main-thread state — handled synchronously, with expiry clearing
+    /// itself here. The system probes run on `probeQueue`; their verdict is assembled back on the
+    /// main thread and lands in `suppressCache` for the next tick.
+    private func refreshSuppression() {
         if let until = sceneUntil {
-            if Date() < until { return sceneKind == .meeting ? .meeting : .scene }
+            if Date() < until { suppressCache = sceneKind == .meeting ? .meeting : .scene; return }
             clearScene()
         }
-        if settings.skipDuringFullscreen, FullscreenDetector.isFrontmostFullscreen() { return .fullscreen }
-        if settings.pauseDuringMic, micShouldPause() { return .meeting }
-        if settings.respectFocusMode, FocusModeDetector.isFocusActive() { return .focus }
-        return nil
+        guard !probeInFlight else { return }
+        // Snapshot the toggles on the main thread; probe only what the user enabled.
+        let checkFullscreen = settings.skipDuringFullscreen
+        let checkMic = settings.pauseDuringMic
+        let checkFocus = settings.respectFocusMode
+        guard checkFullscreen || checkMic || checkFocus else { suppressCache = nil; return }
+        probeInFlight = true
+        probeQueue.async { [weak self] in
+            let fullscreen = checkFullscreen && FullscreenDetector.isFrontmostFullscreen()
+            let micActive = checkMic && MicMonitor.isActive()
+            let focus = checkFocus && FocusModeDetector.isFocusActive()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.probeInFlight = false
+                // Mic bookkeeping runs every round regardless of which suppressor wins, so the
+                // continuous-capture cap is measured from when the mic actually went live (the old
+                // inline probe short-circuited past it while e.g. fullscreen was active).
+                let micPause = checkMic && self.micShouldPause(activeNow: micActive)
+                if fullscreen { self.suppressCache = .fullscreen }
+                else if micPause { self.suppressCache = .meeting }
+                else if focus { self.suppressCache = .focus }
+                else { self.suppressCache = nil }
+            }
+        }
     }
 
     // MARK: - Quiet scenes
@@ -239,8 +274,8 @@ final class AppController: NSObject, BreakTimerDelegate {
                                                    matching: DateComponents(hour: 4, minute: 0),
                                                    matchingPolicy: .nextTime) ?? Date().addingTimeInterval(12 * 3600)
         }
-        UserDefaults.standard.set(sceneUntil!.timeIntervalSince1970, forKey: Self.sceneUntilKey)
-        UserDefaults.standard.set(kind.rawValue, forKey: Self.sceneKindKey)
+        settings.sceneUntil = sceneUntil
+        settings.sceneKindRaw = kind.rawValue
         detectCounter = 0   // Take effect on the next tick
         syncViewModel()
     }
@@ -255,16 +290,14 @@ final class AppController: NSObject, BreakTimerDelegate {
     private func clearScene() {
         sceneUntil = nil
         sceneKind = nil
-        UserDefaults.standard.removeObject(forKey: Self.sceneUntilKey)
-        UserDefaults.standard.removeObject(forKey: Self.sceneKindKey)
+        settings.sceneUntil = nil
+        settings.sceneKindRaw = nil
     }
 
     /// Restore a persisted scene on launch ("done for today" survives restarts); drop it if expired.
     private func restoreScene() {
-        let ts = UserDefaults.standard.double(forKey: Self.sceneUntilKey)
-        guard ts > 0,
-              let kind = UserDefaults.standard.string(forKey: Self.sceneKindKey).flatMap(QuietScene.init) else { return }
-        let until = Date(timeIntervalSince1970: ts)
+        guard let until = settings.sceneUntil,
+              let kind = settings.sceneKindRaw.flatMap(QuietScene.init) else { return }
         if until > Date() { sceneUntil = until; sceneKind = kind } else { clearScene() }
     }
 
@@ -284,9 +317,10 @@ final class AppController: NSObject, BreakTimerDelegate {
     }
 
     /// Whether mic usage should trigger a pause: enforce a continuous cap, beyond which it's treated as
-    /// a persistent background capture and reminders resume.
-    private func micShouldPause() -> Bool {
-        guard MicMonitor.isActive() else { micActiveSince = nil; return false }
+    /// a persistent background capture and reminders resume. `activeNow` is the probe result (the
+    /// CoreAudio query itself runs on `probeQueue`); the bookkeeping stays main-thread state.
+    private func micShouldPause(activeNow: Bool) -> Bool {
+        guard activeNow else { micActiveSince = nil; return false }
         let since = micActiveSince ?? Date()
         micActiveSince = since
         return Date().timeIntervalSince(since) < Self.micPauseCap
@@ -310,6 +344,12 @@ final class AppController: NSObject, BreakTimerDelegate {
         // Do not count a rest the moment the reminder sounds — wait until the user actually steps away,
         // confirmed by restConfirmer (honest statistics).
         restConfirmer.didFire()
+    }
+
+    /// Manual "buzz now": play the full reminder, but never open the honest-rest window — a test
+    /// buzz followed by stepping away must not count as a real break.
+    func breakTimerDidFireManually(_ timer: BreakTimer) {
+        playFullReminder()
     }
 
     /// Reminding follow-up nudge: replays the full user preset identically to the initial fire.
@@ -378,6 +418,14 @@ final class AppController: NSObject, BreakTimerDelegate {
         if viewModel.isDeferring != timer.isDeferring { viewModel.isDeferring = timer.isDeferring }
         let scene = sceneText()
         if viewModel.sceneText != scene { viewModel.sceneText = scene }
+        // Actuator availability can change at runtime (a Bluetooth Magic Trackpad connecting after
+        // launch, or disconnecting): mirror it so the warning row / About window stay truthful.
+        // `isAvailable` is cheap — the engine caches its device and throttles re-probing internally.
+        let available = engine.isAvailable
+        if viewModel.backend.available != available {
+            viewModel.backend.available = available
+            viewModel.backend.name = engine.backendName   // Auto backend's name follows its live pick
+        }
         menuBar.refresh()
     }
 

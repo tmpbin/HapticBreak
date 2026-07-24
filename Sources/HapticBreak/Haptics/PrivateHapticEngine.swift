@@ -7,20 +7,51 @@ import Foundation
 ///   `MTDeviceCreateList`, validated by "whether the actuator opens successfully", automatically
 ///   adapting to offset differences across models/OS versions.
 /// - The actuator is "one-shot": every buzz must re-create + open, then close after use.
+/// - The device is **re-resolved (throttled) when missing**: a Bluetooth Magic Trackpad that
+///   connects after launch (clamshell mode at login) is picked up within seconds instead of the
+///   engine staying dead for the whole run; a failed open invalidates the cache so a reconnect
+///   recovers the same way.
 final class PrivateHapticEngine: HapticEngine {
 
     private let mt: MultitouchSupport?
-    private(set) var deviceID: UInt64?
     private let debug: Bool
+
+    /// Guards the device cache: `actuate` runs on the player's background queue while
+    /// `isAvailable` is read from the main thread.
+    private let lock = NSLock()
+    private var cachedDeviceID: UInt64?
+    private var lastResolveAt: Date = .distantPast
+    private static let resolveRetryInterval: TimeInterval = 10
 
     init(debug: Bool = false) {
         self.debug = debug
         self.mt = MultitouchSupport.shared
-        self.deviceID = mt.flatMap { Self.resolveDeviceID(using: $0, debug: debug) }
+        self.cachedDeviceID = mt.flatMap { Self.resolveDeviceID(using: $0, debug: debug) }
+        self.lastResolveAt = Date()
     }
 
-    var isAvailable: Bool { mt != nil && deviceID != nil }
+    /// Current device ID (diagnostics / `--hapticscan`); re-resolves when missing, throttled.
+    var deviceID: UInt64? { currentDeviceID() }
+
+    var isAvailable: Bool { mt != nil && currentDeviceID() != nil }
     var backendName: String { L.t("backend.name.private") }
+
+    /// Cached device, or a throttled re-resolution attempt when the cache is empty.
+    private func currentDeviceID() -> UInt64? {
+        lock.lock(); defer { lock.unlock() }
+        if let id = cachedDeviceID { return id }
+        guard let mt, Date().timeIntervalSince(lastResolveAt) >= Self.resolveRetryInterval else {
+            return nil
+        }
+        lastResolveAt = Date()
+        cachedDeviceID = Self.resolveDeviceID(using: mt, debug: debug)
+        return cachedDeviceID
+    }
+
+    /// The device stopped opening (disconnected): drop the cache so the next call re-resolves.
+    private func invalidateDevice() {
+        lock.lock(); cachedDeviceID = nil; lock.unlock()
+    }
 
     func actuate(_ tone: ResolvedTone) {
         // Production path: fix flags=0, use float0 as the linear main strength control and float1 for dullness
@@ -45,13 +76,17 @@ final class PrivateHapticEngine: HapticEngine {
 
     @discardableResult
     private func actuateWaveform(_ actuationID: Int32, flags: UInt32, scale: Float, timeScale: Float) -> Int32 {
-        guard let mt = mt, let id = deviceID else { return -1 }
-        guard let unmanaged = mt.createFromDeviceID(id) else { return -1 }
+        guard let mt = mt, let id = currentDeviceID() else { return -1 }
+        guard let unmanaged = mt.createFromDeviceID(id) else {
+            invalidateDevice()
+            return -1
+        }
         let actuator = unmanaged.takeRetainedValue()
         defer { /* CFTypeRef released by ARC at end of scope */ }
         let openRet = mt.actuatorOpen(actuator, 0)
         guard openRet == 0 else {
             if debug { NSLog("[HapticBreak] actuatorOpen failed 0x%x", openRet) }
+            invalidateDevice()
             return openRet
         }
         let ret = mt.actuatorActuate(actuator, actuationID, flags, scale, timeScale)

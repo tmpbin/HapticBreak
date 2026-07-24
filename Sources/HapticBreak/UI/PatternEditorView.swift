@@ -595,10 +595,13 @@ struct PatternEditorView: View {
 
     private func startElapsedTimer() {
         stopElapsedTimer()
-        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
             guard recording, !recordPaused, let start = recordStartDate else { return }
             recordElapsed = Date().timeIntervalSince(start)
         }
+        // .common: keep the elapsed readout running while a menu is open (default mode freezes).
+        RunLoop.main.add(timer, forMode: .common)
+        elapsedTimer = timer
     }
 
     private func stopElapsedTimer() {
@@ -885,8 +888,8 @@ struct PatternEditorView: View {
 
     private func importFile() {
         guard let ps = PatternIO.importFromFile() else { return }
-        ps.forEach { settings.upsertCustomPattern($0) }
-        flash(L.t("editor.imported", ps.count))
+        let added = settings.importCustomPatterns(ps)
+        flash(L.t("editor.imported", added))
     }
 
     private func copyDraft() {
@@ -898,8 +901,8 @@ struct PatternEditorView: View {
         guard let t = PatternIO.clipboardText(), let ps = PatternIO.parse(t) else {
             flash(L.t("editor.pasteFailed")); return
         }
-        ps.forEach { settings.upsertCustomPattern($0) }
-        flash(L.t("editor.imported", ps.count))
+        let added = settings.importCustomPatterns(ps)
+        flash(L.t("editor.imported", added))
     }
 
     private func flash(_ msg: String) {

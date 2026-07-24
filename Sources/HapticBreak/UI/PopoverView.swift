@@ -64,8 +64,8 @@ struct PopoverView: View {
             }
 
             // Read without observing: the expanded panel re-evaluates every second anyway (remaining tick),
-        // so a backend switch shows up within one tick.
-        if !viewModel.backend.available {
+            // so a backend switch shows up within one tick.
+            if !viewModel.backend.available {
                 Label(L.t("popover.noActuator"), systemImage: "exclamationmark.triangle")
                     .font(.caption2)
                     .foregroundStyle(.orange)

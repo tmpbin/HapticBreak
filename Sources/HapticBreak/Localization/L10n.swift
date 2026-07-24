@@ -37,12 +37,14 @@ final class L10n: ObservableObject {
     static let shared = L10n()
 
     private static let storageKey = "hb.appLanguage"
+    /// Shared preference store (in-memory in ephemeral runs — never bypass to UserDefaults directly).
+    private let store: KeyValueStore = RuntimeMode.settingsDefaults()
 
     @Published var language: AppLanguage {
         didSet {
             guard language != oldValue else { return }
             if suppressPersist { return }
-            UserDefaults.standard.set(language.rawValue, forKey: Self.storageKey)
+            store.set(language.rawValue, forKey: Self.storageKey)
             NotificationCenter.default.post(name: .hbLanguageChanged, object: nil)
         }
     }
@@ -56,7 +58,7 @@ final class L10n: ObservableObject {
     }
 
     private init() {
-        let raw = UserDefaults.standard.string(forKey: Self.storageKey) ?? AppLanguage.system.rawValue
+        let raw = (store.object(forKey: Self.storageKey) as? String) ?? AppLanguage.system.rawValue
         language = AppLanguage(rawValue: raw) ?? .system
     }
 
@@ -299,6 +301,9 @@ extension L10n {
         "hotkey.taken":            ["已被其他动作占用", "Already used by another action", "他のアクションで使用中"],
         "hotkey.needModifier":     ["需包含 ⌃ / ⌥ / ⌘", "Include ⌃ / ⌥ / ⌘", "⌃ / ⌥ / ⌘ が必要"],
         "hotkey.reset":            ["恢复默认快捷键", "Restore default shortcuts", "ショートカットをデフォルトに戻す"],
+        "hotkey.conflictWarning":  ["以下组合键被其他应用占用，未能注册：%@",
+                                    "Taken by another app, could not register: %@",
+                                    "他のアプリが使用中のため登録できません：%@"],
         "hotkey.ackHint":          ["%@  开始休息 / 确认提醒", "%@  Start break / acknowledge", "%@  休憩を開始 / 確認"],
         "settings.openEditorBtn":  ["打开编辑器…", "Open editor…", "エディタを開く…"],
         "settings.autoUpdate":     ["自动检查更新", "Automatically check for updates", "自動的にアップデートを確認"],

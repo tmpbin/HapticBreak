@@ -7,10 +7,11 @@ import XCTest
 final class BreakTimerTests: HBTestCase {
 
     private final class CountingDelegate: BreakTimerDelegate {
-        var fires = 0, pulses = 0, hints = 0, autoPostpones = 0, acks = 0
+        var fires = 0, manualFires = 0, pulses = 0, hints = 0, autoPostpones = 0, acks = 0
         var lastAckMethod: AckMethod?
         var rests = 0, changes = 0, willSoon = 0
         func breakTimerDidFire(_ timer: BreakTimer) { fires += 1 }
+        func breakTimerDidFireManually(_ timer: BreakTimer) { manualFires += 1 }
         func breakTimerPulse(_ timer: BreakTimer) { pulses += 1 }
         func breakTimerShouldShowHint(_ timer: BreakTimer) { hints += 1 }
         func breakTimerDidAutoPostpone(_ timer: BreakTimer) { autoPostpones += 1 }
@@ -25,6 +26,13 @@ final class BreakTimerTests: HBTestCase {
     /// Idle seconds representing "active but not typing this instant": above the 1.5s typing-pause
     /// threshold, well below the 30s step-away acknowledgment.
     private let activeIdle: TimeInterval = 5
+
+    /// Test clock: every read advances one second, matching the suite's "one tick = one second"
+    /// driving convention (BreakTimer reads its clock exactly once per `tick` — a documented contract).
+    private static func autoTickClock() -> () -> Date {
+        var current = Date(timeIntervalSinceReferenceDate: 0)
+        return { current.addTimeInterval(1); return current }
+    }
 
     /// A deterministic timer with a 1-minute interval, no rest segment, and idle/respectful-reminders off.
     private func makeTimer(_ configure: (Settings) -> Void = { _ in })
@@ -42,7 +50,7 @@ final class BreakTimerTests: HBTestCase {
             configure(s)
         }
         let d = CountingDelegate()
-        let t = BreakTimer(settings: s)
+        let t = BreakTimer(settings: s, now: Self.autoTickClock())
         t.delegate = d
         return (t, d)
     }
@@ -252,7 +260,7 @@ final class BreakTimerTests: HBTestCase {
             s.typingAwareDefer = false
             s.gentleHeadsUp = false
         }
-        let t = BreakTimer(settings: s)
+        let t = BreakTimer(settings: s, now: Self.autoTickClock())
         tick(t, 60)
         t.acknowledge(.panel)
         XCTAssertEqual(t.phase, .resting)
@@ -301,5 +309,71 @@ final class BreakTimerTests: HBTestCase {
         tick(t, 1)
         XCTAssertEqual(t.pauseReason, PauseReason.none, "resumes as soon as the scene lifts")
         XCTAssertEqual(t.remaining, 59)
+    }
+
+    // MARK: - Wall-clock anchoring
+
+    /// A manually driven timer + clock for gap-specific scenarios (auto-clock covers the 1s path).
+    private func makeWallClockTimer(intervalMinutes: Int = 25)
+        -> (BreakTimer, CountingDelegate, advance: (TimeInterval) -> Void) {
+        let s = makeSettings { s in
+            s.breakIntervalMinutes = intervalMinutes
+            s.restMinutes = 0
+            s.idleEnabled = false
+            s.typingAwareDefer = false
+            s.gentleHeadsUp = false
+        }
+        var current = Date(timeIntervalSinceReferenceDate: 0)
+        let d = CountingDelegate()
+        let t = BreakTimer(settings: s) { current }
+        t.delegate = d
+        return (t, d, { current.addTimeInterval($0) })
+    }
+
+    func testDelayedTickAppliesFullElapsedTime() {
+        let (t, _, advance) = makeWallClockTimer()
+        advance(10)   // the tick arrives 10s late (App Nap coalescing / busy main thread)
+        _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        XCTAssertEqual(t.remaining, 1490, "a late tick subtracts the real elapsed time — no drift")
+    }
+
+    func testSleepSizedGapCountsOnlyTheCap() {
+        let (t, _, advance) = makeWallClockTimer()
+        advance(3600)   // system slept for an hour
+        _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        XCTAssertEqual(t.remaining, 1440, "a discontinuity counts at most 60s — sleep is not work time")
+    }
+
+    func testPausedElapsedTimeIsDiscarded() {
+        let (t, _, advance) = makeWallClockTimer()
+        t.toggleManualPause()
+        advance(300)
+        _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        XCTAssertEqual(t.remaining, 1500, "paused time never counts")
+        t.toggleManualPause()
+        advance(1)
+        _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        XCTAssertEqual(t.remaining, 1499, "counting resumes normally after the pause")
+    }
+
+    func testFractionalSecondsCarryBetweenTicks() {
+        let (t, _, advance) = makeWallClockTimer()
+        for _ in 0..<4 {
+            advance(0.5)
+            _ = t.tick(idleSeconds: activeIdle, externalSuppress: nil)
+        }
+        XCTAssertEqual(t.remaining, 1498, "four half-second ticks apply exactly two whole seconds")
+    }
+
+    // MARK: - Manual "buzz now"
+
+    func testFireNowUsesManualPathAndRestartsWork() {
+        let (t, d) = makeTimer()
+        tick(t, 10)
+        t.fireNow()
+        XCTAssertEqual(d.manualFires, 1, "buzz now goes through the manual fire path")
+        XCTAssertEqual(d.fires, 0, "a manual buzz is not a real deadline (no honest-rest window)")
+        XCTAssertEqual(t.phase, .working)
+        XCTAssertEqual(t.remaining, 60, "work countdown restarts after a manual buzz")
     }
 }

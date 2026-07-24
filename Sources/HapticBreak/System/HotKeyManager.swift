@@ -6,10 +6,17 @@ import Carbon.HIToolbox
 /// Compared to `NSEvent` global monitoring, Carbon hotkeys require no "Accessibility" permission, which
 /// suits distribution. Bindings are user-editable (see `HotKeyBindings`); factory defaults:
 /// ⌃⌥Space pause/resume, ⌃⌥S skip, ⌃⌥B buzz now, ⌃⌥⏎ acknowledge (start the break).
-final class HotKeyManager {
+///
+/// Observable so Settings can surface registration failures (a combo already taken by another app
+/// fails silently at the Carbon level — the user deserves to know why their shortcut does nothing).
+/// Registration only happens on shortcut changes, so observing this stays cheap.
+final class HotKeyManager: ObservableObject {
 
     static let shared = HotKeyManager()
     private init() {}
+
+    /// Display strings (⌃⌥Space) of combos the system rejected at registration. Main-thread only.
+    @Published private(set) var failedBindings: [String] = []
 
     private var handlerInstalled = false
     private var hotKeyRefs: [EventHotKeyRef] = []
@@ -21,32 +28,25 @@ final class HotKeyManager {
                           skip: @escaping () -> Void,
                           breakNow: @escaping () -> Void,
                           acknowledge: @escaping () -> Void) {
-        if bindings.pauseEnabled {
-            register(keyCode: bindings.pause.keyCode, modifiers: bindings.pause.modifiers, action: togglePause)
-        }
-        if bindings.skipEnabled {
-            register(keyCode: bindings.skip.keyCode, modifiers: bindings.skip.modifiers, action: skip)
-        }
-        if bindings.buzzEnabled {
-            register(keyCode: bindings.buzz.keyCode, modifiers: bindings.buzz.modifiers, action: breakNow)
-        }
-        if bindings.acknowledgeEnabled {
-            register(keyCode: bindings.acknowledge.keyCode, modifiers: bindings.acknowledge.modifiers, action: acknowledge)
-        }
+        if bindings.pauseEnabled { register(bindings.pause, action: togglePause) }
+        if bindings.skipEnabled { register(bindings.skip, action: skip) }
+        if bindings.buzzEnabled { register(bindings.buzz, action: breakNow) }
+        if bindings.acknowledgeEnabled { register(bindings.acknowledge, action: acknowledge) }
     }
 
-    func register(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
+    private func register(_ binding: HotKeyBinding, action: @escaping () -> Void) {
         installHandlerIfNeeded()
         let id = nextID; nextID += 1
         actions[id] = action
         let hotID = EventHotKeyID(signature: 0x4842_5254 /* 'HBRT' */, id: id)
         var ref: EventHotKeyRef?
-        let status = RegisterEventHotKey(keyCode, modifiers, hotID,
+        let status = RegisterEventHotKey(binding.keyCode, binding.modifiers, hotID,
                                          GetApplicationEventTarget(), 0, &ref)
         if status == noErr, let ref = ref {
             hotKeyRefs.append(ref)
         } else {
-            NSLog("[HapticBreak] RegisterEventHotKey failed: %d", status)
+            failedBindings.append(binding.display)
+            Log.hotkeys.error("RegisterEventHotKey failed for \(binding.display, privacy: .public): \(status)")
         }
     }
 
@@ -55,6 +55,7 @@ final class HotKeyManager {
         hotKeyRefs.removeAll()
         actions.removeAll()
         nextID = 1
+        if !failedBindings.isEmpty { failedBindings = [] }
     }
 
     private func installHandlerIfNeeded() {

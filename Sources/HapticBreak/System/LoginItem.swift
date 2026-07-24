@@ -16,7 +16,7 @@ enum LoginItem {
                 }
             }
         } catch {
-            NSLog("[HapticBreak] LoginItem setup failed: %@", error.localizedDescription)
+            Log.system.error("LoginItem setup failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

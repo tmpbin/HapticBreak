@@ -72,9 +72,35 @@ enum HapticBackend: String, Codable, CaseIterable {
     }
 }
 
+/// Auto backend: prefers the private engine, degrading to the public one **per actuation** — the
+/// old construction-time choice froze the fallback forever, so a trackpad that connected after
+/// launch never upgraded the path. `isAvailable` reports the private actuator's truth: the panel
+/// warning should tell the user when precise haptics are missing, even though the public fallback
+/// still accepts calls.
+final class AutoHapticEngine: HapticEngine {
+
+    private let priv: PrivateHapticEngine
+    private let pub = PublicHapticEngine()
+
+    init(debug: Bool = false) {
+        priv = PrivateHapticEngine(debug: debug)
+    }
+
+    var isAvailable: Bool { priv.isAvailable }
+    var backendName: String { priv.isAvailable ? priv.backendName : pub.backendName }
+
+    func actuate(_ tone: ResolvedTone) {
+        if priv.isAvailable {
+            priv.actuate(tone)
+        } else {
+            pub.actuate(tone)
+        }
+    }
+}
+
 enum HapticEngineFactory {
-    /// Build the haptic engine from preferences. For `.auto`, prefer the private API and fall back to
-    /// the public API if unavailable.
+    /// Build the haptic engine from preferences. For `.auto`, prefer the private API and degrade to
+    /// the public API per actuation (recovers automatically when a haptic device appears).
     static func make(_ backend: HapticBackend, debug: Bool = false) -> HapticEngine {
         switch backend {
         case .public:
@@ -82,8 +108,7 @@ enum HapticEngineFactory {
         case .private:
             return PrivateHapticEngine(debug: debug)
         case .auto:
-            let priv = PrivateHapticEngine(debug: debug)
-            return priv.isAvailable ? priv : PublicHapticEngine()
+            return AutoHapticEngine(debug: debug)
         }
     }
 }

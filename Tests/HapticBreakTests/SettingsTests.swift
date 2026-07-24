@@ -48,6 +48,22 @@ final class SettingsTests: HBTestCase {
         XCTAssertEqual(s.strength, 8, "when the new key exists, the legacy key is ignored")
     }
 
+    func testImportCustomPatternsDeduplicatesReimports() {
+        let s = makeSettings()
+        let steps = [HapticStep(timbre: .crisp, strength: 6, dullness: 0.3, gapMsAfter: 120),
+                     HapticStep(timbre: .buzz, strength: 9, dullness: 0.8, gapMsAfter: 0)]
+        let make = { HapticPattern(id: "custom.\(UUID().uuidString)", name: "Mine",
+                                   symbol: "waveform", steps: steps, isBuiltin: false) }
+        XCTAssertEqual(s.importCustomPatterns([make()]), 1, "first import lands")
+        XCTAssertEqual(s.importCustomPatterns([make()]), 0,
+                       "re-importing the same name+beats (fresh IDs) is skipped, not duplicated")
+        XCTAssertEqual(s.customPatterns.count, 1)
+        var variant = make()
+        variant.steps[0].strength = 3
+        XCTAssertEqual(s.importCustomPatterns([variant]), 1, "same name but different beats still imports")
+        XCTAssertEqual(s.customPatterns.count, 2)
+    }
+
     func testLegacyPomodoroOnMigratesToUnifiedCycle() {
         let d = makeDefaults()
         d.set(true, forKey: "hb.pomodoro")

@@ -83,6 +83,15 @@ struct HapticPattern: Codable, Identifiable, Hashable {
         return TimeInterval(ms) / 1000.0
     }
 
+    /// Content equality of the beat sequence, ignoring per-beat identity (imports mint fresh UUIDs,
+    /// so `steps ==` can never match a re-imported copy).
+    func hasSameSteps(as other: HapticPattern) -> Bool {
+        steps.count == other.steps.count && zip(steps, other.steps).allSatisfy {
+            $0.timbre == $1.timbre && $0.strength == $1.strength
+                && $0.dullness == $1.dullness && $0.gapMsAfter == $1.gapMsAfter
+        }
+    }
+
     /// UI display name: built-ins resolve a localization key by id convention (`builtin.X` → `pattern.X`);
     /// custom patterns use the user's name.
     var displayName: String {
