@@ -8,6 +8,9 @@ import Foundation
 ///   stopped immediately after — zero idle cost and zero chance of accidental triggers otherwise.
 /// - **Count-only**: the callback's finger *count* and timestamp are all we read; the raw finger
 ///   struct layout (which varies across macOS builds) is never dereferenced.
+/// - **Resting-contact tolerant**: recognition (see `TapSequenceDetector`) measures taps as
+///   transient rises above a resting baseline, so a parked thumb / palm heel — the natural posture
+///   when feeling the buzz — no longer makes the gesture unrecognizable.
 /// - **Fail-quiet**: if any private symbol is missing or no device is found, `isSupported` is false
 ///   and everything degrades to the other ack channels (hotkey / panel / stepping away).
 final class TouchGestureMonitor {
@@ -17,25 +20,12 @@ final class TouchGestureMonitor {
     /// Called on the main thread when a three-finger triple-tap is recognized.
     var onTripleTap: (() -> Void)?
 
-    // MARK: - Gesture parameters
-    /// A tap qualifies when at least this many fingers touched during the episode.
-    private static let requiredFingers = 3
-    /// Maximum touch-down duration for an episode to count as a "tap" (not a rest/drag).
-    private static let maxTapDuration = 0.45
-    /// Maximum gap between consecutive taps to keep the sequence alive.
-    private static let maxTapGap = 0.65
-    private static let requiredTaps = 3
-
     // MARK: - State (single MT callback thread + main thread; guarded by lock)
     private let lock = NSLock()
     private var running = false
     private var devices: [CFTypeRef] = []
-
-    private var episodeActive = false
-    private var episodeBeganAt: Double = 0
-    private var episodeMaxFingers = 0
-    private var tapCount = 0
-    private var lastTapEndedAt: Double = 0
+    /// Recognition state machine (pure logic, unit-tested in TapSequenceDetectorTests).
+    private var detector = TapSequenceDetector()
 
     private init() {}
 
@@ -99,43 +89,14 @@ final class TouchGestureMonitor {
     }
 
     private func resetGestureState() {
-        episodeActive = false
-        episodeMaxFingers = 0
-        tapCount = 0
-        lastTapEndedAt = 0
+        detector = TapSequenceDetector()
     }
 
-    /// One contact frame: track touch episodes by finger count only.
-    /// Episode = first finger down → all fingers up; it counts as a tap when it was short and
-    /// reached ≥3 fingers at some point (fingers land/lift asynchronously, so we track the max).
+    /// One contact frame: recognition is delegated to the pure `TapSequenceDetector`
+    /// (resting-baseline model — see that type for the full semantics).
     fileprivate func handleFrame(fingerCount: Int, timestamp: Double) {
         lock.lock()
-        var fire = false
-        if fingerCount > 0 {
-            if !episodeActive {
-                episodeActive = true
-                episodeBeganAt = timestamp
-                episodeMaxFingers = fingerCount
-            } else {
-                episodeMaxFingers = max(episodeMaxFingers, fingerCount)
-            }
-        } else if episodeActive {
-            episodeActive = false
-            let duration = timestamp - episodeBeganAt
-            let isTap = duration <= Self.maxTapDuration && episodeMaxFingers >= Self.requiredFingers
-            episodeMaxFingers = 0
-            if isTap {
-                let gap = timestamp - lastTapEndedAt
-                tapCount = (tapCount > 0 && gap <= Self.maxTapGap + Self.maxTapDuration) ? tapCount + 1 : 1
-                lastTapEndedAt = timestamp
-                if tapCount >= Self.requiredTaps {
-                    tapCount = 0
-                    fire = true
-                }
-            } else {
-                tapCount = 0
-            }
-        }
+        let fire = detector.handleFrame(fingerCount: fingerCount, timestamp: timestamp)
         lock.unlock()
         if fire {
             DispatchQueue.main.async { [weak self] in self?.onTripleTap?() }
