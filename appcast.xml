@@ -3,6 +3,15 @@
     <channel>
         <title>HapticBreak</title>
         <item>
+            <title>1.3.1</title>
+            <pubDate>Fri, 24 Jul 2026 21:08:17 +0000</pubDate>
+            <link>https://github.com/tmpbin/HapticBreak</link>
+            <sparkle:version>10301</sparkle:version>
+            <sparkle:shortVersionString>1.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.3.1/HapticBreak-1.3.1.zip" length="2441477" type="application/octet-stream" sparkle:edSignature="YUmwHmxyANtMgGGmWzh/fYaMgKUcwBtu+TnohXzDjtrh1+iF8PaZsMHLgb99COQhGd3CJ/2cKVMZh5pr0wWWDQ=="/>
+        </item>
+        <item>
             <title>1.3.0</title>
             <pubDate>Wed, 15 Jul 2026 09:20:04 +0000</pubDate>
             <link>https://github.com/tmpbin/HapticBreak</link>
@@ -19,15 +28,6 @@
             <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.2.0/HapticBreak-1.2.0.zip" length="2427031" type="application/octet-stream" sparkle:edSignature="ntucrnBSGwZGVKdJgwu/mV8vfIehWWoGcP68k9Wxw/OZ0co0fOyaF0SptV54+8kE2lhjOqzbiCHXyMcqPpRoBQ=="/>
-        </item>
-        <item>
-            <title>1.1.0</title>
-            <pubDate>Wed, 08 Jul 2026 16:20:14 +0000</pubDate>
-            <link>https://github.com/tmpbin/HapticBreak</link>
-            <sparkle:version>10100</sparkle:version>
-            <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.1.0/HapticBreak-1.1.0.zip" length="2415109" type="application/octet-stream" sparkle:edSignature="Cc3Wv4I/GkUFNDVcZasxAKDPhgvcahlXa2meKOiKp+yXPSz5CGphcZVnQ47lafi/wKhL1P+i2mrOAicG4u3wAg=="/>
         </item>
         <item>
             <title>1.0.2</title>
