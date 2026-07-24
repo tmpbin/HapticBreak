@@ -32,11 +32,18 @@ final class UpdaterController: NSObject {
         super.init()
         applyAutoCheck()
         NotificationCenter.default.addObserver(
-            self, selector: #selector(applyAutoCheck), name: .hbSettingsChanged, object: nil)
+            self, selector: #selector(settingsChanged(_:)), name: .hbSettingsChanged, object: nil)
+    }
+
+    /// Only the auto-update toggle (or a bulk reset) is relevant here.
+    @objc private func settingsChanged(_ note: Notification) {
+        let key = note.userInfo?[Settings.changedKeyUserInfoKey] as? Settings.Key
+        guard key == nil || key == .autoUpdate else { return }
+        applyAutoCheck()
     }
 
     /// Sync the "automatically check for updates" preference to Sparkle (Sparkle also persists this state itself).
-    @objc private func applyAutoCheck() {
+    private func applyAutoCheck() {
         controller?.updater.automaticallyChecksForUpdates = Settings.shared.autoUpdateCheck
     }
 

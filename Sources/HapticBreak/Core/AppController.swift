@@ -14,7 +14,6 @@ final class AppController: NSObject, BreakTimerDelegate {
     let viewModel = AppViewModel()
 
     private var engine: HapticEngine
-    private var currentBackend: HapticBackend
     private let player: HapticPlayer
     private let timer: BreakTimer
     private let stats = StatisticsStore.shared
@@ -23,9 +22,6 @@ final class AppController: NSObject, BreakTimerDelegate {
     private var tickTimer: DispatchSourceTimer?
     /// App Nap suppression token (see `start()`); held for the app's lifetime.
     private var activityToken: NSObjectProtocol?
-    private var lastWorkSeconds: Int
-    private var lastEnableShortcuts: Bool
-    private var lastHotKeys: HotKeyBindings
 
     /// Cached environment suppression (fullscreen / mic / focus). These probes are relatively expensive and
     /// the state changes slowly, so they are re-evaluated only every `detectCadence` ticks (see `onTick`),
@@ -54,13 +50,9 @@ final class AppController: NSObject, BreakTimerDelegate {
     private lazy var windows = WindowManager(viewModel: viewModel)
 
     override init() {
-        currentBackend = settings.backend
         engine = HapticEngineFactory.make(settings.backend)
         player = HapticPlayer(engine: engine)
         timer = BreakTimer(settings: settings)
-        lastWorkSeconds = max(1, settings.workMinutes * 60)
-        lastEnableShortcuts = settings.enableShortcuts
-        lastHotKeys = settings.hotKeys
         super.init()
         viewModel.controller = self
         timer.delegate = self
@@ -91,7 +83,7 @@ final class AppController: NSObject, BreakTimerDelegate {
         syncViewModel()
         refreshStreak()
         NotificationCenter.default.addObserver(
-            self, selector: #selector(settingsChanged),
+            self, selector: #selector(settingsChanged(_:)),
             name: .hbSettingsChanged, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(languageChanged),
@@ -480,39 +472,44 @@ final class AppController: NSObject, BreakTimerDelegate {
         viewModel.backend.name = engine.backendName
     }
 
-    @objc private func settingsChanged() {
-        // Re-probe environment suppression on the next tick, so toggling a suppressor setting responds promptly.
-        detectCounter = 0
-
-        if settings.backend != currentBackend {
-            currentBackend = settings.backend
-            engine = HapticEngineFactory.make(settings.backend)
-            player.updateEngine(engine)
-            viewModel.backend.name = engine.backendName
-            viewModel.backend.available = engine.isAvailable
-        }
-
-        // Re-register only when the shortcut switch or a binding actually changes, to avoid repeated
-        // registration from high-frequency changes like dragging a slider.
-        if settings.enableShortcuts != lastEnableShortcuts || settings.hotKeys != lastHotKeys {
-            lastEnableShortcuts = settings.enableShortcuts
-            lastHotKeys = settings.hotKeys
+    /// Dispatch on the changed key delivered by `Settings` (equal re-assignments never arrive, so
+    /// every delivery is a real change — no manual old-value caches needed here anymore).
+    @objc private func settingsChanged(_ note: Notification) {
+        let key = note.userInfo?[Settings.changedKeyUserInfoKey] as? Settings.Key
+        switch key {
+        case .backend:
+            rebuildEngine()
+        case .shortcuts, .hotKeys:
             registerShortcutsIfNeeded()
-        }
-
-        // The ack-gesture toggle may change mid-reminding; re-evaluate the monitor.
-        updateGestureMonitor()
-
-        // When the work duration changes (interval switch), restart the countdown with the new
-        // duration — more intuitive.
-        let newWork = max(1, settings.workMinutes * 60)
-        if newWork != lastWorkSeconds {
-            lastWorkSeconds = newWork
+        case .ackGesture:
+            // May change mid-reminding; re-evaluate the monitor.
+            updateGestureMonitor()
+        case .interval:
+            // Work duration changed: restart the countdown with the new duration — more intuitive.
             timer.restartWorking()
-        } else {
+        case .restMinutes:
             timer.applySettingsChange()
+        case .idleEnabled, .idlePause, .idleReset, .fullscreen, .focus, .pauseMic:
+            // Re-probe on the next tick, so toggling a suppressor responds promptly.
+            detectCounter = 0
+        case nil:
+            // Bulk change (reset to defaults): reconfigure everything.
+            rebuildEngine()
+            registerShortcutsIfNeeded()
+            updateGestureMonitor()
+            detectCounter = 0
+            timer.restartWorking()
+        default:
+            break   // Display/haptic-content settings need no controller reconfiguration
         }
         syncViewModel()
+    }
+
+    private func rebuildEngine() {
+        engine = HapticEngineFactory.make(settings.backend)
+        player.updateEngine(engine)
+        viewModel.backend.name = engine.backendName
+        viewModel.backend.available = engine.isAvailable
     }
 
     /// Suspend the global hotkeys while the settings recorder captures a combo (otherwise the

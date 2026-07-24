@@ -2,7 +2,10 @@ import Foundation
 import Combine
 
 extension Notification.Name {
-    /// Broadcast after any setting changes, so the controller can reconfigure in real time.
+    /// Broadcast after a setting **actually changes**. `userInfo[Settings.changedKeyUserInfoKey]`
+    /// carries the changed `Settings.Key`; absent = bulk change (reset to defaults). Equal
+    /// re-assignments are dropped at the source (no write, no broadcast), so consumers can treat
+    /// every delivery as a real change and dispatch on the key instead of re-diffing the world.
     static let hbSettingsChanged = Notification.Name("com.aremind.hapticbreak.settingsChanged")
 }
 
@@ -32,70 +35,70 @@ final class Settings: ObservableObject {
     static let intervalOptions = [15, 20, 25, 30, 45, 60]
 
     // MARK: - Reminder / cycle
-    @Published var breakIntervalMinutes: Int { didSet { persist(breakIntervalMinutes, .interval) } }
+    @Published var breakIntervalMinutes: Int { didSet { persist(breakIntervalMinutes, oldValue, .interval) } }
     /// Rest segment length in minutes. 0 = reminder only (no timed rest segment). Unifies the old
     /// "periodic reminder vs pomodoro" split into a single work X / rest Y model.
-    @Published var restMinutes: Int { didSet { persist(restMinutes, .restMinutes) } }
-    @Published var selectedPatternID: String { didSet { persist(selectedPatternID, .pattern) } }
+    @Published var restMinutes: Int { didSet { persist(restMinutes, oldValue, .restMinutes) } }
+    @Published var selectedPatternID: String { didSet { persist(selectedPatternID, oldValue, .pattern) } }
     /// Pattern used for the heads-up (a light hint before a break).
-    @Published var headsUpPatternID: String { didSet { persist(headsUpPatternID, .headsUpPattern) } }
+    @Published var headsUpPatternID: String { didSet { persist(headsUpPatternID, oldValue, .headsUpPattern) } }
     /// Pattern used on finish (rest segment ends).
-    @Published var finishPatternID: String { didSet { persist(finishPatternID, .finishPattern) } }
+    @Published var finishPatternID: String { didSet { persist(finishPatternID, oldValue, .finishPattern) } }
     /// Global haptic strength 1…10 (multiplicative main gain; old 1…5 auto-migrated ×2).
-    @Published var strength: Int { didSet { persist(strength, .strength) } }
-    @Published var postponeMinutes: Int { didSet { persist(postponeMinutes, .postpone) } }
+    @Published var strength: Int { didSet { persist(strength, oldValue, .strength) } }
+    @Published var postponeMinutes: Int { didSet { persist(postponeMinutes, oldValue, .postpone) } }
 
     // MARK: - Acknowledge-to-stop reminding
     /// Seconds between gentle follow-up nudges while a reminder awaits acknowledgment.
-    @Published var remindPulseSeconds: Int { didSet { persist(remindPulseSeconds, .pulseSeconds) } }
+    @Published var remindPulseSeconds: Int { didSet { persist(remindPulseSeconds, oldValue, .pulseSeconds) } }
     /// Total nudges (including the initial reminder) before the reminder silently auto-postpones.
-    @Published var remindPulseMax: Int { didSet { persist(remindPulseMax, .pulseMax) } }
+    @Published var remindPulseMax: Int { didSet { persist(remindPulseMax, oldValue, .pulseMax) } }
     /// Acknowledge the reminder with a three-finger triple-tap on the trackpad (listened for only while reminding).
-    @Published var ackGestureEnabled: Bool { didSet { persist(ackGestureEnabled, .ackGesture) } }
+    @Published var ackGestureEnabled: Bool { didSet { persist(ackGestureEnabled, oldValue, .ackGesture) } }
 
     // MARK: - Respectful / smart reminders
     /// If you're typing at the deadline, wait for a natural pause before buzzing (CR-01).
-    @Published var typingAwareDefer: Bool { didSet { persist(typingAwareDefer, .typingDefer) } }
+    @Published var typingAwareDefer: Bool { didSet { persist(typingAwareDefer, oldValue, .typingDefer) } }
     /// One very faint "heads-up tap" ~30s early (CR-02).
-    @Published var gentleHeadsUp: Bool { didSet { persist(gentleHeadsUp, .headsUp) } }
+    @Published var gentleHeadsUp: Bool { didSet { persist(gentleHeadsUp, oldValue, .headsUp) } }
     /// While the control panel is visible, overlay the faintest "heartbeat" as a breathing companion (can be off).
-    @Published var panelHeartbeat: Bool { didSet { persist(panelHeartbeat, .panelHeartbeat) } }
+    @Published var panelHeartbeat: Bool { didSet { persist(panelHeartbeat, oldValue, .panelHeartbeat) } }
 
     // MARK: - Smart pause
-    @Published var idleEnabled: Bool { didSet { persist(idleEnabled, .idleEnabled) } }
-    @Published var idlePauseSeconds: Int { didSet { persist(idlePauseSeconds, .idlePause) } }
-    @Published var idleResetMinutes: Int { didSet { persist(idleResetMinutes, .idleReset) } }
-    @Published var skipDuringFullscreen: Bool { didSet { persist(skipDuringFullscreen, .fullscreen) } }
-    @Published var respectFocusMode: Bool { didSet { persist(respectFocusMode, .focus) } }
+    @Published var idleEnabled: Bool { didSet { persist(idleEnabled, oldValue, .idleEnabled) } }
+    @Published var idlePauseSeconds: Int { didSet { persist(idlePauseSeconds, oldValue, .idlePause) } }
+    @Published var idleResetMinutes: Int { didSet { persist(idleResetMinutes, oldValue, .idleReset) } }
+    @Published var skipDuringFullscreen: Bool { didSet { persist(skipDuringFullscreen, oldValue, .fullscreen) } }
+    @Published var respectFocusMode: Bool { didSet { persist(respectFocusMode, oldValue, .focus) } }
     /// Auto-pause when the microphone is in use (call/meeting) (CR-06).
-    @Published var pauseDuringMic: Bool { didSet { persist(pauseDuringMic, .pauseMic) } }
+    @Published var pauseDuringMic: Bool { didSet { persist(pauseDuringMic, oldValue, .pauseMic) } }
 
     // MARK: - Auxiliary reminders
-    @Published var auxFlashScreen: Bool { didSet { persist(auxFlashScreen, .flash) } }
-    @Published var auxMenubarHighlight: Bool { didSet { persist(auxMenubarHighlight, .menubarHi) } }
-    @Published var soundEnabled: Bool { didSet { persist(soundEnabled, .sound) } }
+    @Published var auxFlashScreen: Bool { didSet { persist(auxFlashScreen, oldValue, .flash) } }
+    @Published var auxMenubarHighlight: Bool { didSet { persist(auxMenubarHighlight, oldValue, .menubarHi) } }
+    @Published var soundEnabled: Bool { didSet { persist(soundEnabled, oldValue, .sound) } }
     /// Alert sound name — a named system sound matching macOS "System Settings > Sound".
-    @Published var soundName: String { didSet { persist(soundName, .soundName) } }
-    @Published var menuBarStyle: MenuBarStyle { didSet { persist(menuBarStyle.rawValue, .menuBarStyle) } }
+    @Published var soundName: String { didSet { persist(soundName, oldValue, .soundName) } }
+    @Published var menuBarStyle: MenuBarStyle { didSet { persist(menuBarStyle.rawValue, oldValue.rawValue, .menuBarStyle) } }
 
     // MARK: - System
     @Published var launchAtLogin: Bool {
         didSet {
-            persist(launchAtLogin, .login)
+            guard persist(launchAtLogin, oldValue, .login) else { return }
             if ready { LoginItem.setEnabled(launchAtLogin) }
         }
     }
-    @Published var enableShortcuts: Bool { didSet { persist(enableShortcuts, .shortcuts) } }
+    @Published var enableShortcuts: Bool { didSet { persist(enableShortcuts, oldValue, .shortcuts) } }
     /// The four global shortcuts (user-editable). Stored as one JSON blob.
-    @Published var hotKeys: HotKeyBindings { didSet { persistHotKeys() } }
+    @Published var hotKeys: HotKeyBindings { didSet { persistHotKeys(oldValue) } }
     /// In-app automatic update checking (Sparkle). Synced to Sparkle's `automaticallyChecksForUpdates`.
-    @Published var autoUpdateCheck: Bool { didSet { persist(autoUpdateCheck, .autoUpdate) } }
+    @Published var autoUpdateCheck: Bool { didSet { persist(autoUpdateCheck, oldValue, .autoUpdate) } }
     @Published var backend: HapticBackend {
-        didSet { persist(backend.rawValue, .backend) }
+        didSet { persist(backend.rawValue, oldValue.rawValue, .backend) }
     }
 
     // MARK: - Custom patterns
-    @Published var customPatterns: [HapticPattern] { didSet { persistPatterns() } }
+    @Published var customPatterns: [HapticPattern] { didSet { persistPatterns(oldValue) } }
 
     // MARK: - First launch (not @Published, only for one-time onboarding)
     var hasLaunchedBefore: Bool {
@@ -295,7 +298,11 @@ final class Settings: ObservableObject {
     }
 
     // MARK: - Persistence
-    private enum Key: String {
+
+    /// userInfo key carrying the changed `Settings.Key` in `.hbSettingsChanged`; absent = bulk change.
+    static let changedKeyUserInfoKey = "hb.settings.changedKey"
+
+    enum Key: String {
         case interval, restMinutes, pattern, headsUpPattern, finishPattern, strength, postpone
         case pulseSeconds, pulseMax, ackGesture
         case typingDefer, headsUp, panelHeartbeat
@@ -312,23 +319,39 @@ final class Settings: ObservableObject {
         var full: String { "hb." + rawValue }
     }
 
-    private func persist<T>(_ value: T, _ key: Key) {
+    /// Persist one setting and broadcast the change (with the key in userInfo). Assignments that
+    /// don't change the value are dropped entirely — no write, no broadcast: a re-tapped chip or a
+    /// slider notch rounding to the same value must not e.g. restart the countdown downstream.
+    /// - Returns: whether the value actually changed.
+    @discardableResult
+    private func persist<T: Equatable>(_ value: T, _ old: T, _ key: Key) -> Bool {
+        guard value != old else { return false }
         defaults.set(value, forKey: key.full)
-        if ready { NotificationCenter.default.post(name: .hbSettingsChanged, object: nil) }
+        broadcast(key)
+        return true
     }
 
-    private func persistPatterns() {
+    /// Post `.hbSettingsChanged` carrying the changed key (nil = bulk change). Silenced until `ready`.
+    private func broadcast(_ key: Key?) {
+        guard ready else { return }
+        NotificationCenter.default.post(name: .hbSettingsChanged, object: nil,
+                                        userInfo: key.map { [Self.changedKeyUserInfoKey: $0] })
+    }
+
+    private func persistPatterns(_ old: [HapticPattern]) {
+        guard customPatterns != old else { return }
         if let data = try? JSONEncoder().encode(customPatterns) {
             defaults.set(data, forKey: Key.customPatterns.full)
         }
-        if ready { NotificationCenter.default.post(name: .hbSettingsChanged, object: nil) }
+        broadcast(.customPatterns)
     }
 
-    private func persistHotKeys() {
+    private func persistHotKeys(_ old: HotKeyBindings) {
+        guard hotKeys != old else { return }
         if let data = try? JSONEncoder().encode(hotKeys) {
             defaults.set(data, forKey: Key.hotKeys.full)
         }
-        if ready { NotificationCenter.default.post(name: .hbSettingsChanged, object: nil) }
+        broadcast(.hotKeys)
     }
 
     private static func readHotKeys(_ defaults: KeyValueStore) -> HotKeyBindings {
