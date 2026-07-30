@@ -106,6 +106,17 @@ final class BreakTimer {
     /// Matches `RestConfirmer.idleThreshold`, so the honest-rest confirmation follows naturally.
     private let ackIdleThreshold: TimeInterval = 30
 
+    /// Most recent idle-seconds reading (exposed read-only so the UI can visualize the
+    /// reminding countdown without recomputing `30 - idleSeconds` outside the timer).
+    private(set) var lastIdleSeconds: TimeInterval = 0
+
+    /// Reminding idle countdown (30→0). Returns -1 when not in the reminding phase.
+    /// This is a *stored* value (not computed) because `completeAcknowledge()` changes
+    /// `phase` before the delegate fires — a computed property checking `phase` would always
+    /// return -1 by the time the delegate reads it, losing the final "0s" frame.
+    private var _remindingCountdown: Int = -1
+    var remindingCountdown: Int { _remindingCountdown }
+
     init(settings: Settings, now: @escaping () -> Date = Date.init) {
         self.settings = settings
         self.now = now
@@ -172,6 +183,7 @@ final class BreakTimer {
         let tickDate = now()
         let gap = tickDate.timeIntervalSince(lastTick)
         lastTick = tickDate
+        lastIdleSeconds = idleSeconds
 
         // 1) Compute idle reset (work segment only, enabled and threshold > 0)
         if settings.idleEnabled, settings.idleResetMinutes > 0, phase == .working {
@@ -220,24 +232,28 @@ final class BreakTimer {
             driftSeconds += 1
         }
 
-        // 3) Reminding phase: wait for acknowledgment, re-nudging gently on a bounded schedule
+        // 3) Reset the countdown when we're no longer in the reminding phase, so the UI
+        //    doesn't show a stale value (it's also recalculated inside tickReminding).
+        if phase != .reminding { _remindingCountdown = -1 }
+
+        // 4) Reminding phase: wait for acknowledgment, re-nudging gently on a bounded schedule
         if phase == .reminding {
             tickReminding(idleSeconds: idleSeconds, seconds: seconds)
             delegate?.breakTimerStateChanged(self)
             return false
         }
 
-        // 4) Approaching reminder: one early "heads-up tap" (CR-02)
+        // 5) Approaching reminder: one early "heads-up tap" (CR-02)
         if settings.gentleHeadsUp, phase == .working, !headsUpFired,
            remaining > 0, remaining <= preWarnThreshold() {
             headsUpFired = true
             delegate?.breakTimerWillFireSoon(self)
         }
 
-        // 5) Decrement by the elapsed whole seconds (never below 0)
+        // 6) Decrement by the elapsed whole seconds (never below 0)
         if remaining > 0 { remaining = max(0, remaining - seconds) }
 
-        // 6) Expiry: typing-aware defer (CR-01) or normal expiry
+        // 7) Expiry: typing-aware defer (CR-01) or normal expiry
         if remaining <= 0 {
             if phase == .working, settings.typingAwareDefer,
                idleSeconds < typingPauseThreshold, deferredSeconds < maxDeferSeconds {
@@ -256,6 +272,10 @@ final class BreakTimer {
     /// otherwise replay the full user preset every `remindPulseSeconds`, auto-postponing at the cap.
     /// The teaching hint fires once per cycle, on the nudge that reaches `min(3, cap)`.
     private func tickReminding(idleSeconds: TimeInterval, seconds: Int) {
+        // Capture the countdown *before* any acknowledge call — `completeAcknowledge()`
+        // changes `phase`, so the stored value is the only way the delegate can read it.
+        _remindingCountdown = max(0, min(30, 30 - Int(idleSeconds)))
+
         if idleSeconds >= ackIdleThreshold {
             completeAcknowledge(.stepAway)
             return

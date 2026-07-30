@@ -177,6 +177,25 @@ private struct CenterReadout: View {
     }
 }
 
+/// Reminding idle-countdown arc: a separate subtle arc tracking 30→0 s. Drawn slightly wider / lower
+/// opacity so it reads as a "shadow" of the remaining idle window, distinct from the minute ring.
+/// Stateless pure render — the parent drives animation via `.animation()` on `progress`.
+private struct CountdownArc: View {
+    var progress: Double       // 0...1
+    var color: Color
+    var lineWidth: CGFloat
+    var size: CGFloat
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: max(0, min(1, progress)))
+            .stroke(color.opacity(0.45), style: StrokeStyle(lineWidth: lineWidth + 4, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .padding((lineWidth + 4) / 2)
+            .frame(width: size, height: size)
+            .allowsHitTesting(false)
+    }
+}
+
 /// Rest-phase breathing halo: a soft glow behind the ring that swells and settles on an 8-second
 /// breath cycle. Driven by the existing 1 Hz elapsed value — the target flips every 4 s and the
 /// implicit ease interpolates, so there is **no repeatForever** (the panel-CPU hard rule).
@@ -228,6 +247,9 @@ struct CountdownRing: View {
     /// The hover hint (symbol + label) temporarily replaces the status readout for discoverability.
     var onTap: (() -> Void)? = nil
     var tapHint: (symbol: String, label: String)? = nil
+    /// Reminding idle countdown in seconds (30→0). When non-nil a subtle CountdownArc appears inside
+    /// the minute ring, animated with spring-bounce on idle reset. `nil` hides the arc entirely.
+    var countdown: Int? = nil
 
     private let lineWidth: CGFloat = 8
 
@@ -235,6 +257,10 @@ struct CountdownRing: View {
     @State private var model = RingModel(.init(remaining: 0, total: 1, animated: true))
     @StateObject private var anim = RingAnimator()
     @State private var hovering = false
+    /// Reminding idle-countdown animation state — driven by `onChange(of: countdown)`.
+    @State private var displayedCountdown: Double = 30
+    @State private var lastBounce = Date.distantPast
+    @State private var countdownInitialized = false
 
     private var input: RingModel.Input { .init(remaining: remaining, total: total, animated: animated) }
     private var geo: RingGeometry { RingGeometry(size: size, lineWidth: lineWidth) }
@@ -247,6 +273,13 @@ struct CountdownRing: View {
 
             MinuteArc(lit: anim.displayedLit, grids: model.grids,
                       color: color, lineWidth: lineWidth, flash: anim.minuteFlash)
+
+            // Reminding idle countdown arc — appears inside the minute ring, shrinks 30→0,
+            // spring-bounces on activity reset. Independent of L1/L2 minute-deduction pipeline.
+            if countdown != nil {
+                CountdownArc(progress: displayedCountdown / 30.0,
+                             color: color, lineWidth: lineWidth, size: size)
+            }
 
             // Continuous ornaments live on Core Animation layers. The shimmer leaves the tree when the ring
             // is not running, so nothing spins in the background.
@@ -302,6 +335,29 @@ struct CountdownRing: View {
             // Shimmer starts/stops purely by ShimmerOrnament entering/leaving the tree (see `if animated`
             // above), so its repeating animation is guaranteed to stop when the panel collapses.
             if !isOn { anim.snap(toLit: model.lit) }
+        }
+        .onChange(of: countdown) { newValue in
+            guard let target = newValue else { return }
+            if !countdownInitialized {
+                displayedCountdown = Double(target)
+                countdownInitialized = true
+                return
+            }
+            if target > Int(displayedCountdown.rounded()) {
+                // Idle reset: spring-bounce back to full. Debounce to 1 s so jittery input
+                // doesn't retrigger the bounce every tick.
+                let now = Date()
+                guard now.timeIntervalSince(lastBounce) >= 1.0 else { return }
+                lastBounce = now
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                    displayedCountdown = Double(target)
+                }
+            } else {
+                // Normal countdown: smooth linear decrement.
+                withAnimation(.linear(duration: 0.3)) {
+                    displayedCountdown = Double(target)
+                }
+            }
         }
     }
 }

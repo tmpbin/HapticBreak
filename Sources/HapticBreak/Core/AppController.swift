@@ -399,6 +399,10 @@ final class AppController: NSObject, BreakTimerDelegate {
     /// write fires `objectWillChange` regardless of equality, and this runs once per second — unconditional
     /// writes would invalidate every observer (collapsed popover, any open window) five times per tick.
     private func syncViewModel() {
+        // Reminding countdown: read-only from the timer (purely for visual display).
+        let cd = timer.remindingCountdown
+        if viewModel.remindingCountdown != cd { viewModel.remindingCountdown = cd }
+
         if viewModel.remaining   != timer.remaining   { viewModel.remaining   = timer.remaining }
         if viewModel.total       != timer.total       { viewModel.total       = timer.total }
         if viewModel.phase       != timer.phase       {

@@ -94,7 +94,7 @@ final class MenuBarController: NSObject {
         let image: NSImage?
         switch viewModel.settings.menuBarStyle {
         case .iconCountdown:
-            title = " " + viewModel.timeString
+            title = " " + viewModel.menuBarTitle
             image = iconImage
         case .iconOnly:
             title = "\u{200B}"
