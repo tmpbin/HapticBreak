@@ -36,7 +36,8 @@ struct PopoverView: View {
                           breathing: viewModel.phase == .resting && !viewModel.isPaused && viewModel.panelVisible,
                           onImpact: { viewModel.ringImpact() },
                           onTap: ringTap,
-                          tapHint: ringTapHint)
+                          tapHint: ringTapHint,
+                          countdown: viewModel.remindingCountdown >= 0 ? viewModel.remindingCountdown : nil)
                 .padding(.top, 14)
 
             VStack(spacing: 8) {

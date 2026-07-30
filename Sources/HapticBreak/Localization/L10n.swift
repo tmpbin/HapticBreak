@@ -127,6 +127,7 @@ extension L10n {
         "status.waitingTyping":    ["等待打字停顿…", "Waiting for a typing pause…", "入力の区切りを待っています…"],
         "status.reminding":        ["该休息了", "Time for a break", "休憩の時間"],
         "status.breakShort":       ["休息", "Break", "休憩"],
+        "status.countdown":        ["%ds", "%ds", "%ds"],
         "status.paused":           ["已暂停", "Paused", "一時停止中"],
         "status.idlePaused":       ["空闲暂停", "Paused (idle)", "アイドルで一時停止"],
         "status.focusPaused":      ["专注模式暂停", "Paused (Focus)", "集中モードで一時停止"],

@@ -37,6 +37,10 @@ final class AppViewModel: ObservableObject {
     /// Flipped to `true` after several unanswered nudges to show the teaching hint card
     /// (explaining triple-tap / step-away acknowledgment). Cleared when the phase leaves reminding.
     @Published var showNudgeHint: Bool = false
+    /// 30 s idle-countdown mirror (30→0) during the reminding phase; –1 when not in reminding.
+    /// Updated once per tick by AppController.syncViewModel() — the UI reads this to drive the
+    /// countdown arc, ring center readout, and menu-bar text without touching any BreakTimer logic.
+    @Published var remindingCountdown: Int = -1
 
     let settings = Settings.shared
     weak var controller: AppController?
@@ -44,8 +48,23 @@ final class AppViewModel: ObservableObject {
     var isPaused: Bool { pauseReason.isPaused }
     var progress: Double { total > 0 ? Double(total - remaining) / Double(total) : 0 }
     /// While a reminder awaits acknowledgment there is no countdown — show a short invitation instead.
+    /// When the UI has a live idle-countdown mirror (reminding + countdown ≥ 0) show a bare "Ns" for
+    /// the ring center readout (e.g. "25s"). The menu bar uses `menuBarTitle` which combines the
+    /// break label + countdown (e.g. "休息 25s").
     var timeString: String {
-        phase == .reminding ? L.t("status.breakShort") : Self.format(remaining)
+        if phase == .reminding && remindingCountdown >= 0 {
+            return L.t("status.countdown", remindingCountdown)
+        }
+        return phase == .reminding ? L.t("status.breakShort") : Self.format(remaining)
+    }
+
+    /// Menu-bar title: during reminding with a live countdown this is "休息 25s" (status label + "Ns");
+    /// otherwise identical to `timeString`.
+    var menuBarTitle: String {
+        if phase == .reminding && remindingCountdown >= 0 {
+            return L.t("status.breakShort") + " \(remindingCountdown)s"
+        }
+        return timeString
     }
 
     static func format(_ seconds: Int) -> String {
