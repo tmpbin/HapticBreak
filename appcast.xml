@@ -3,6 +3,15 @@
     <channel>
         <title>HapticBreak</title>
         <item>
+            <title>1.3.2</title>
+            <pubDate>Wed, 30 Sep 2026 17:56:31 +0000</pubDate>
+            <link>https://github.com/tmpbin/HapticBreak</link>
+            <sparkle:version>10302</sparkle:version>
+            <sparkle:shortVersionString>1.3.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.3.2/HapticBreak-1.3.2.zip" length="2443268" type="application/octet-stream" sparkle:edSignature="E4O6XcxtK9I18lMcDMeHTc789eLkcOu8K4AijNsRMjbxJQPEqNgfXO/ylf1mRGAFxD8sz1ztl0jiv+KQL6SUBQ=="/>
+        </item>
+        <item>
             <title>1.3.1</title>
             <pubDate>Fri, 24 Jul 2026 21:08:17 +0000</pubDate>
             <link>https://github.com/tmpbin/HapticBreak</link>
@@ -19,15 +28,6 @@
             <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.3.0/HapticBreak-1.3.0.zip" length="2431452" type="application/octet-stream" sparkle:edSignature="XC31uhiEH+PP+eJkygdj2O5PU2tRp3reiefAOjJOdF9ZOprl5mOKJGc9ysbN7ZtZ8jqYvW41j5ZIA/i46MwGAQ=="/>
-        </item>
-        <item>
-            <title>1.2.0</title>
-            <pubDate>Thu, 09 Jul 2026 18:25:07 +0000</pubDate>
-            <link>https://github.com/tmpbin/HapticBreak</link>
-            <sparkle:version>10200</sparkle:version>
-            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/tmpbin/HapticBreak/releases/download/v1.2.0/HapticBreak-1.2.0.zip" length="2427031" type="application/octet-stream" sparkle:edSignature="ntucrnBSGwZGVKdJgwu/mV8vfIehWWoGcP68k9Wxw/OZ0co0fOyaF0SptV54+8kE2lhjOqzbiCHXyMcqPpRoBQ=="/>
         </item>
         <item>
             <title>1.0.2</title>
