@@ -11,6 +11,10 @@
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-01
+
+修复版：设置页里切换震动模式后立即试触，不必再手动点「试触」。
+
 ### Fixed
 - **设置里切换震动模式不会立即试震**：设置页的三个模式选择器（休息提醒 / 休息前预告 /
   休息结束）选中后现在立即按当前全局强度试触，与主面板的模式选择、提示音选择一致——
@@ -243,7 +247,9 @@ App Nap 拉长、秒针始终平滑；外接触控板热插拔自动恢复；诚
 - 独立分发（非 App Store）：`build.sh` 支持版本注入与可选 Developer ID 签名 / 公证；
   GitHub Actions 推送 tag 自动构建、按本更新日志生成 Release（`.dmg` + `.zip`）。
 
-[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/tmpbin/HapticBreak/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/tmpbin/HapticBreak/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/tmpbin/HapticBreak/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/tmpbin/HapticBreak/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tmpbin/HapticBreak/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tmpbin/HapticBreak/compare/v1.0.2...v1.1.0
