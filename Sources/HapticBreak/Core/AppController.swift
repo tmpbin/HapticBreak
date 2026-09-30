@@ -452,7 +452,10 @@ final class AppController: NSObject, BreakTimerDelegate {
     func breakNow()          { timer.fireNow() }
     /// Acknowledge the current reminder (no-op outside the reminding phase).
     func acknowledge(_ method: AckMethod) { timer.acknowledge(method) }
-    func testCurrentPattern(){ player.play(settings.selectedPattern, strength: settings.strength) }
+    func testCurrentPattern(){ previewPattern(settings.selectedPattern) }
+    /// Feel any pattern the way a real event plays it (global strength applied) — the Settings pickers'
+    /// select-to-preview. `testPattern` below is the editor's design-strength counterpart.
+    func previewPattern(_ p: HapticPattern) { player.play(p, strength: settings.strength) }
     /// Editor preview: design reference (unaffected by global scaling, so you hear exactly the designed strength).
     func testPattern(_ p: HapticPattern) { player.playDesign(p) }
     func testStep(_ step: HapticStep)    { player.testStepDesign(step) }

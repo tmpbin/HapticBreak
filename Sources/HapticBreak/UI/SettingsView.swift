@@ -60,10 +60,21 @@ struct SettingsView: View {
                              set: { settings.hotKeys[keyPath: enabledPath] = $0 }))
     }
 
-    /// Category-grouped pattern picker (basic / nature / rhythm / custom).
+    /// Category-grouped pattern picker (basic / nature / rhythm / custom) with select-to-preview: a pick
+    /// plays the pattern right away at the current strength, like the panel's picker and the sound picker.
+    ///
+    /// The preview hangs off the binding's *setter* (a pick made in this very control), deliberately not
+    /// `.onChange`: this window is kept alive (hidden) after close, and the same settings are also written
+    /// by the panel picker / dice, the pattern editor's star and "restore defaults" — none of those may
+    /// buzz from here.
     @ViewBuilder
     private func groupedPatternPicker(_ title: String, selection: Binding<String>, idTag: String) -> some View {
-        Picker(title, selection: selection) {
+        let previewing = Binding(get: { selection.wrappedValue },
+                                 set: { id in
+                                     selection.wrappedValue = id
+                                     if let pattern = settings.pattern(for: id) { viewModel.previewPattern(pattern) }
+                                 })
+        Picker(title, selection: previewing) {
             ForEach(HapticPatternCategory.allCases) { cat in
                 let items = settings.patterns(in: cat)
                 if !items.isEmpty {

@@ -133,6 +133,7 @@ final class AppViewModel: ObservableObject {
     func acknowledge()        { controller?.acknowledge(.panel) }
     func ringImpact()         { controller?.ringImpact() }
     func testCurrentPattern() { controller?.testCurrentPattern() }
+    func previewPattern(_ p: HapticPattern) { controller?.previewPattern(p) }
     func testPattern(_ p: HapticPattern) { controller?.testPattern(p) }
     func testStep(_ step: HapticStep)    { controller?.testStep(step) }
     func auditionStep(_ step: HapticStep) { controller?.auditionStep(step) }
